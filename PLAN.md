@@ -53,8 +53,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: all controls work against the real API.
 - [ ] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
   Done when: add and edit both work and show server validation errors.
-- [ ] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor).
-  Done when: selecting a provider shows count, emails, notes, and notes save.
+- [x] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group. Done when: selecting a provider shows count, emails, notes, and notes save. | 2026-11-12 | T5.5 | web/js/app.js renderProviders: grouped providers list with expandable cards, notes textarea, save notes (PUT /api/providers/{id}/notes with CSRF); API verified end-to-end (create provider, save notes, notes persisted); node --check clean, live flow verified |
 - [ ] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
   Done when: a pasted file goes through preview, edit, and commit in the browser.
 - [ ] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
