@@ -1,0 +1,95 @@
+# KeyVault plan
+
+Full spec: `docs/spec.md`. Rules and spec amendments: `AGENTS.md`.
+Each task fits one short agent session. Do them in order. Tick the box only when "Done when" is true.
+
+## Phase 1: Foundation
+
+- [x] **T1.1 Scaffold.** Done by `setup.sh`: directory tree, `go.mod`, embedded web stub, minimal server. Spec: none.
+  Done when: `go build ./...` passes.
+- [ ] **T1.2 Database package.** Open SQLite with `modernc.org/sqlite`, enable foreign keys and WAL, migration runner, `schema.sql` v1 (providers, api_keys with fingerprint, settings). Spec: section 3, amendments 2, 8, 9.
+  Done when: tests create a fresh DB, apply migrations, and reject a duplicate provider name in a different case.
+- [ ] **T1.3 Config and server.** Flags and env for address and data dir, open the DB on start, graceful shutdown, `/healthz`. Spec: sections 2 (Deployment), 6 (Application Access).
+  Done when: `go run ./cmd/keyvault` starts, creates `data/keyvault.db`, and `/healthz` returns ok.
+
+## Phase 2: Encryption and authentication
+
+- [ ] **T2.1 Encryption package.** Argon2id derivation, HKDF subkeys, AES-256-GCM seal and open with a fresh nonce each time. Spec: section 6, amendments 3.
+  Done when: tests cover round trip, tampered ciphertext failing, wrong key failing, nonce uniqueness.
+- [ ] **T2.2 Setup and unlock.** Verifier, setup, unlock, lock, status endpoints. Key held in memory only. Spec: section 6, amendments 4, 7.
+  Done when: tests cover first-time setup, wrong password rejected, correct password unlocks, lock clears the key.
+- [ ] **T2.3 Sessions and CSRF.** HTTP-only SameSite cookie, idle timeout, CSRF token on state-changing requests, middleware that blocks every `/api` route except auth while locked. Spec: section 6.
+  Done when: tests cover locked access refused, missing CSRF token refused, expired session refused.
+
+## Phase 3: Providers and keys
+
+- [ ] **T3.1 Providers API.** CRUD plus notes endpoint. Spec: sections 3, 4 (Providers View, Notes Editor), 8, amendment 8.
+  Done when: tests cover CRUD, case-insensitive uniqueness, 409 on deleting a provider with keys, notes persisting.
+- [ ] **T3.2 Keys API.** Create, get, update, delete with encryption and fingerprint. List responses are masked. Spec: sections 3, 4 (API Keys View, Add API Key), 8, amendment 2.
+  Done when: tests prove the DB holds no plaintext key, list never returns plaintext, email validation and empty key rejected, multiple keys per email/provider allowed.
+- [ ] **T3.3 Reveal and search.** Reveal endpoint, search across email, provider name, label. Spec: section 4.
+  Done when: tests cover reveal returning the exact key, search hitting each of the three fields.
+- [ ] **T3.4 Dashboard stats.** Counts and recent lists endpoint. Spec: section 4 (Dashboard).
+  Done when: a test seeds data and checks every count.
+
+## Phase 4: Bulk import
+
+- [ ] **T4.1 Patterns and TXT parser.** State-based parser, provider heading detection, custom provider names, unmatched lines kept. Spec: section 5 (Parsing Strategy, Provider Detection), amendment 10.
+  Done when: the spec section 5 example parses to the right provider per record; a record before any heading is flagged, not assigned; tests include odd whitespace, blank lines, mixed case, punctuation in keys.
+- [ ] **T4.2 CSV parser.** Same output shape as the TXT parser. Spec: section 5.
+  Done when: tests cover header and headerless CSVs and quoted fields.
+- [ ] **T4.3 Validator and duplicates.** Email validation, empty key check, HMAC fingerprint duplicate check against the DB and within the batch. Spec: section 5 (Duplicate Detection), amendment 2.
+  Done when: tests cover duplicates inside the file and against existing records; no plaintext hash is stored.
+- [ ] **T4.4 Import endpoints.** Parse, validate, commit with the skip, import, and review duplicate modes, and the completion counts. Spec: sections 5, 8, amendment 11.
+  Done when: an integration test imports a realistic multi-provider file and the counts match.
+
+## Phase 5: Frontend
+
+- [ ] **T5.1 Shell and unlock screen.** `index.html`, `style.css`, `app.js`, sidebar, view router, setup and unlock screens, CSRF handling in the fetch wrapper. Spec: section 4 (design requirements, Sidebar).
+  Done when: in a browser you can set a master password, lock, and unlock.
+- [ ] **T5.2 Dashboard view.** Spec: section 4 (Dashboard).
+  Done when: the dashboard shows live counts and recent items.
+- [ ] **T5.3 API Keys view.** Expandable by email, masked keys, search, reveal, copy, delete. Spec: section 4 (API Keys View).
+  Done when: all controls work against the real API.
+- [ ] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
+  Done when: add and edit both work and show server validation errors.
+- [ ] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor).
+  Done when: selecting a provider shows count, emails, notes, and notes save.
+- [ ] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
+  Done when: a pasted file goes through preview, edit, and commit in the browser.
+- [ ] **T5.7 Settings view.** Placeholder sections for Google Drive until Phase 6, master password warning, session timeout. Spec: sections 4, 6.
+  Done when: settings load and save.
+- [ ] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
+  Done when: every view is usable at 375px wide.
+
+## Phase 6: Backup and Google Drive
+
+- [ ] **T6.1 Backup envelope.** `VACUUM INTO` snapshot, encrypt, decrypt, verify integrity. Spec: section 7, amendment 12.
+  Done when: tests round trip a DB, reject a tampered file, reject a wrong password.
+- [ ] **T6.2 Local backup and restore.** Create and restore from a file, confirm step data, rollback copy of the current DB before restore. Spec: section 7 (Restore).
+  Done when: a test backs up, changes data, restores, and finds the original data; the rollback copy exists.
+- [ ] **T6.3 Google OAuth.** Client ID and secret settings, connect, callback with PKCE and state, encrypted token storage, disconnect, status. Spec: section 7 (OAuth Setup), amendments 5, 14.
+  Done when: unit tests cover URL building, state check, token encryption; connect works manually with real credentials.
+- [ ] **T6.4 Drive backup and restore.** Upload, list history, download, restore, over REST. Spec: section 7.
+  Done when: manual run uploads an encrypted file visible in Drive and restores from it.
+- [ ] **T6.5 Scheduled backups and Settings UI.** Spec: sections 7, 4.
+  Done when: the schedule setting triggers a backup and the Settings page shows status and history.
+
+## Phase 7: Packaging
+
+- [ ] **T7.1 Docker.** Multi-stage Dockerfile with `CGO_ENABLED=0`, compose file, volume for `data/`, env vars. Spec: section 2 (Deployment), amendment 13.
+  Done when: `docker compose up` serves the app, and data survives a container recreate.
+- [ ] **T7.2 README.** Linux install, Docker install, config reference, master password warning. Spec: section 7 (Packaging).
+  Done when: following the README from a clean checkout works.
+
+## Phase 8: Testing and finalization
+
+- [ ] **T8.1 End-to-end import test.** Realistic file with every provider, ambiguous headings, duplicates, malformed lines. Spec: section 10 (Phase 8).
+- [ ] **T8.2 Security review.** Check logs for keys, cookies flags, CSRF on every mutating route, locked-state access, session expiry. Fix what fails.
+- [ ] **T8.3 Acceptance run.** Walk spec section 11, items 1 to 17, record pass or fail for each in the Log.
+
+## Log
+
+Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test result | notes for next agent`.
+
+- Scaffold created by setup.sh.

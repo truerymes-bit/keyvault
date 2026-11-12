@@ -1,0 +1,16 @@
+# local data (never commit the database or backups)
+/data/*
+!/data/.gitkeep
+/config/*
+!/config/.gitkeep
+
+# build output
+/bin/
+/keyvault
+*.test
+*.out
+
+# editor and OS
+.DS_Store
+.idea/
+.vscode/
