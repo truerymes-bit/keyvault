@@ -565,7 +565,254 @@ function closeEditModal() {
   overlay.querySelectorAll('#overlay-row > *').forEach((el) => el.remove());
 }
 
-async function showView(view) {
+async function renderImport() {
+  const root = $('#view-root');
+  root.innerHTML = `
+    <div class="view">
+      <h1>Import API Keys</h1>
+      <p class="lede">Paste your provider section text below. Headings set the provider; email/key lines become records.</p>
+      <div class="field">
+        <label for="import-format">Format</label>
+        <select id="import-format">
+          <option value="txt">TXT</option>
+          <option value="csv">CSV</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="import-text">Provider sections and records</label>
+        <textarea id="import-text" rows="9" placeholder="Gemini API Key&#10;user@example.com AQ.Ab8RN6KwaaGNVNX...&#10;OpenRouter&#10;user@example.com «redacted:sk-…»" spellcheck="false"></textarea>
+      </div>
+      <div class="field">
+        <label for="import-custom">Custom provider names (one per line, optional)</label>
+        <textarea id="import-custom" rows="2" placeholder="MyProvider"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="import-parse">Parse</button>
+        <button class="btn" id="import-clear">Clear</button>
+      </div>
+      <div id="import-preview" class="hidden">
+        <div class="field"><span class="small">Columns are editable. Click a cell to edit email, provider or key.</span></div>
+        <div class="table-wrap">
+          <table id="import-table">
+            <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="import-unmatched" class="hidden"></div>
+        <div class="btn-row">
+          <button class="btn" id="import-select-all">Select all valid</button>
+          <select id="import-duplicate-mode">
+            <option value="skip">Skip duplicates</option>
+            <option value="import">Import duplicates</option>
+            <option value="review">Review duplicates</option>
+          </select>
+          <button class="btn primary" id="import-commit">Import selected</button>
+        </div>
+        <div id="import-summary" class="hidden"></div>
+        <div class="footer" style="justify-content:flex-end;">
+          <a class="btn" href="#/keys">Cancel</a>
+        </div>
+      </div>
+    </div>`;
+
+  const textarea = $('#import-text');
+  const custom = $('#import-custom');
+  const parseBtn = $('#import-parse');
+  const clearBtn = $('#import-clear');
+  const preview = $('#import-preview');
+  const tbody = $('#import-table tbody');
+  const unmatched = $('#import-unmatched');
+  const summary = $('#import-summary');
+  const selectAll = $('#import-select-all');
+  const commitBtn = $('#import-commit');
+  const dupMode = $('#import-duplicate-mode');
+  const cellInputs = new Map();
+
+  let session = null;
+
+  const masked = (k) => (k || '').replace(/\S/g, '•');
+
+  const renderRows = (rows) => {
+    tbody.innerHTML = '';
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
+      tr.dataset.index = r.index;
+      const keyCell = r.key ? `<span class="cell key-cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell key-cell" data-field="key">—</span>`;
+      tr.innerHTML = `
+        <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
+        <td><span class="cell" data-field="provider">${escapeHtml(r.provider)}</span></td>
+        <td>${keyCell}</td>
+        <td class="status ${r.status}">${escapeHtml(r.status)}</td>
+        <td><button class="btn tiny danger" data-act="remove" data-index="${r.index}">✕</button></td>`;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll('.cell').forEach((el) => {
+      el.addEventListener('click', () => editCell(el));
+    });
+    tbody.querySelectorAll('[data-act="remove"]').forEach((b) => {
+      b.addEventListener('click', () => removeRow(b.dataset.index));
+    });
+  };
+
+  const editCell = (el) => {
+    const row = el.closest('tr');
+    const idx = row.dataset.index;
+    const field = el.dataset.field;
+    const input = document.createElement('input');
+    input.className = 'inline-editing';
+    input.value = el.textContent;
+    input.dataset.index = idx;
+    input.dataset.field = field;
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+    const commit = () => {
+      const span = row.querySelector(`[data-field="${field}"]`);
+      span.textContent = input.value;
+      cellInputs.set(idx + '_' + field, input.value);
+      scheduleValidate();
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { input.replaceWith(document.createElement('span')); }
+    });
+  };
+
+  const removeRow = (idx) => {
+    const tr = tbody.querySelector(`tr[data-index="${idx}"]`);
+    if (!tr) return;
+    tr.innerHTML = `<td colspan="5"><span class="small">removed</span></td>`;
+    tr.classList.add('removed');
+    cellInputs.set(idx + '_email', '');
+    cellInputs.set(idx + '_provider', '');
+    cellInputs.set(idx + '_key', '');
+    scheduleValidate();
+  };
+
+  const scheduleValidate = () => {
+    const records = Object.keys(cellInputs).map((k) => {
+      const [idx, field] = k.split('_');
+      return { index: Number(idx), [field]: cellInputs.get(k) };
+    }).filter((e) => Object.values(e).some((v) => v !== ''));
+    if (!session) return;
+    api('/api/import/validate', { method: 'POST', json: { session_id: session, records } }, { 'X-CSRF-Token': state.csrf })
+      .then((data) => {
+        session = data.session_id;
+        renderRows(data.rows);
+        renderUnmatched(data.unmatched);
+        refreshSummary();
+      })
+      .catch((err) => toast(err.message, 'error'));
+  };
+
+  const renderUnmatched = (lines) => {
+    unmatched.innerHTML = '';
+    if (!lines.length) { unmatched.classList.add('hidden'); return; }
+    unmatched.classList.remove('hidden');
+    unmatched.innerHTML = `<div class="field"><span class="small">Unmatched lines (flagged for review — assign email, key and provider):</span></div><table><tbody>`;
+    for (const u of lines) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td colspan="5">
+          <div class="unmatched-line">${escapeHtml(u.text)} <span class="small">— ${escapeHtml(u.reason)}</span></div>
+          <div class="field" style="margin-top:6px;">
+            <input class="inline-editing" id="unmatch-email-${u.line}" placeholder="email">
+            <input class="inline-editing" id="unmatch-key-${u.line}" placeholder="API key" style="width:220px;">
+            <select id="unmatch-provider-${u.line}" style="width:180px;">
+              <option value="">Assign provider…</option>
+            </select>
+          </div>
+        </td>`;
+      unmatched.appendChild(tr);
+    }
+    api('/api/providers').then((providers) => {
+      unmatched.querySelectorAll('select').forEach((sel) => {
+        providers.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+      });
+    }).catch(() => {});
+  };
+
+  const refreshSummary = () => {
+    const rows = tbody.querySelectorAll('tr.import-row');
+    let valid = 0;
+    rows.forEach((tr) => { if (tr.classList.contains('valid')) valid++; });
+    const counts = { imported: 0, skipped: 0, duplicates: 0, attention: 0, providers_created: 0 };
+    // Refresh counts from a fresh session state via the server when possible.
+    const pending = document.querySelectorAll('tr.import-row.removed');
+    summary.textContent = `Preview: ${rows.length} row${rows.length !== 1 ? 's' : ''}${pending.length ? ' (removed rows shown for review)' : ''}, select all then Import selected.`;
+    summary.classList.remove('hidden');
+    selectAll.textContent = `Select all valid (${valid})`;
+  };
+
+  parseBtn.addEventListener('click', () => {
+    const text = textarea.value.trim();
+    const format = $('#import-format').value;
+    const provs = custom.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (!text) { toast('Paste some text first', 'error'); return; }
+    api('/api/import/parse', { method: 'POST', json: { text, format, custom_providers: provs } }, { 'X-CSRF-Token': state.csrf })
+      .then((data) => {
+        session = data.session_id;
+        renderRows(data.rows);
+        renderUnmatched(data.unmatched);
+        preview.classList.remove('hidden');
+        summary.classList.add('hidden');
+        tbody.querySelectorAll('tr.import-row.removed').forEach((tr) => tr.classList.remove('removed'));
+        cellInputs.clear();
+      })
+      .catch((err) => toast(err.message, 'error'));
+  });
+
+  clearBtn.addEventListener('click', () => {
+    textarea.value = '';
+    custom.value = '';
+    preview.classList.add('hidden');
+    tbody.innerHTML = '';
+    unmatched.innerHTML = '';
+    summary.classList.add('hidden');
+    cellInputs.clear();
+    session = null;
+  });
+
+  selectAll.addEventListener('click', () => {
+    const all = tbody.querySelectorAll('tr.import-row:not(.removed)');
+    all.forEach((tr) => {
+      if (!tr.classList.contains('valid')) tr.style.backgroundColor = '#1a2744';
+    });
+  });
+
+  commitBtn.addEventListener('click', () => {
+    const rows = [];
+    tbody.querySelectorAll('tr.import-row').forEach((tr) => {
+      const idx = Number(tr.dataset.index);
+      const email = tr.querySelector('[data-field="email"]').textContent.trim();
+      const provider = tr.querySelector('[data-field="provider"]').textContent.trim();
+      const key = tr.querySelector('[data-field="key"]').textContent.trim();
+      if (tr.classList.contains('removed')) {
+        rows.push({ index: idx, email: '', provider: '', key: '' });
+      } else if (email || provider || key) {
+        rows.push({ index: idx, email, provider, key });
+      }
+    });
+    if (!rows.length) { toast('Nothing to import', 'error'); return; }
+    api('/api/import/commit', { method: 'POST', json: { session_id: session, records: rows, duplicate_mode: dupMode.value } }, { 'X-CSRF-Token': state.csrf })
+      .then((data) => {
+        toast(`Imported ${data.imported} · skipped ${data.skipped} · attention ${data.attention} · duplicates ${data.duplicates} · providers created ${data.providers_created}`);
+        summary.textContent = `Imported ${data.imported}, skipped ${data.skipped}, attention ${data.attention}, duplicates ${data.duplicates}, providers created ${data.providers_created}.`;
+        summary.classList.remove('hidden');
+        preview.classList.add('hidden');
+      })
+      .catch((err) => toast(err.message, 'error'));
+  });
+
+}
+  async function showView(view) {
   state.view = 'unlock';
   const content = $('#view-root');
   content.innerHTML = '';
@@ -664,3 +911,4 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('hashchange', onHashChange);
   init();
 });
+
