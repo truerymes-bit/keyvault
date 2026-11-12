@@ -57,7 +57,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: selecting a provider shows count, emails, notes, and notes save.
 - [ ] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
   Done when: a pasted file goes through preview, edit, and commit in the browser.
-- [ ] **T5.7 Settings view.** Placeholder sections for Google Drive until Phase 6, master password warning, session timeout. Spec: sections 4, 6.
+- [ ] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
   Done when: settings load and save.
 - [ ] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
   Done when: every view is usable at 375px wide.
