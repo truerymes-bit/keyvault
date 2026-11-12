@@ -7,7 +7,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 - [x] **T1.1 Scaffold.** Done by `setup.sh`: directory tree, `go.mod`, embedded web stub, minimal server. Spec: none.
   Done when: `go build ./...` passes.
-- [ ] **T1.2 Database package.** Open SQLite with `modernc.org/sqlite`, enable foreign keys and WAL, migration runner, `schema.sql` v1 (providers, api_keys with fingerprint, settings). Spec: section 3, amendments 2, 8, 9.
+- [x] **T1.2 Database package.** Open SQLite with `modernc.org/sqlite`, enable foreign keys and WAL, migration runner, `schema.sql` v1 (providers, api_keys with fingerprint, settings). Spec: section 3, amendments 2, 8, 9.
   Done when: tests create a fresh DB, apply migrations, and reject a duplicate provider name in a different case.
 - [ ] **T1.3 Config and server.** Flags and env for address and data dir, open the DB on start, graceful shutdown, `/healthz`. Spec: sections 2 (Deployment), 6 (Application Access).
   Done when: `go run ./cmd/keyvault` starts, creates `data/keyvault.db`, and `/healthz` returns ok.
@@ -93,3 +93,4 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test result | notes for next agent`.
 
 - Scaffold created by setup.sh.
+- 2026-11-12 | T1.2 | internal/database: Open() with WAL + foreign keys, user_version migration runner, schema.sql v1 (providers with NOCASE unique name index, api_keys with fingerprint BLOB and (email, provider_id, fingerprint) index, settings key/value, ON DELETE RESTRICT) | tests pass (go vet, go test ./...) | T1.3 next: wire Open() into cmd/keyvault on start
