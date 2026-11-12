@@ -15,6 +15,7 @@ const state = {
 const VIEWS = {
   dashboard: { name: 'Dashboard', icon: '▣', label: 'Dashboard' },
   keys:      { name: 'API Keys', icon: '🔑', label: 'API Keys' },
+  addKey:    { name: 'Add Key', icon: '+', label: 'Add Key' },
   providers: { name: 'Providers', icon: '📦', label: 'Providers' },
   import:    { name: 'Import', icon: '📥', label: 'Import' },
   settings:  { name: 'Settings', icon: '⚙', label: 'Settings' },
@@ -296,6 +297,98 @@ function formatDate(iso) {
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+async function renderAddKey() {
+  const root = $('#view-root');
+  const providers = await api('/api/providers');
+  const opts = providers.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+
+  const msgBox = document.createElement('div');
+  msgBox.id = 'add-key-msg';
+  msgBox.className = 'empty';
+  msgBox.style.color = 'var(--danger)';
+
+  root.innerHTML = `
+    <div class="view">
+      <h1>Add Key</h1>
+      <p class="lede">Add an API key for an email address and provider.</p>
+      <form id="add-key-form" autocomplete="off">
+        <div class="field">
+          <label for="ak-email">Email address</label>
+          <input id="ak-email" type="email" spellcheck="false" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="ak-provider">Provider</label>
+          <select id="ak-provider">
+            <option value="">Choose a provider…</option>
+            ${opts}
+          </select>
+        </div>
+        <div class="field">
+          <label class="checkbox">
+            <input id="ak-new-provider" type="checkbox">
+            Create a new provider
+          </label>
+          <input id="ak-new-provider-name" type="text" placeholder="New provider name" style="margin-top:6px;" disabled>
+        </div>
+        <div class="field">
+          <label for="ak-key">API key</label>
+          <input id="ak-key" type="password" autocomplete="off" placeholder="••••••••">
+        </div>
+        <div class="field">
+          <label for="ak-label">Description (optional)</label>
+          <input id="ak-label" type="text" placeholder="e.g. production, sandbox">
+        </div>
+        ${msgBox.outerHTML}
+        <div class="footer" style="justify-content:flex-end;">
+          <button type="button" class="btn" id="ak-cancel">Cancel</button>
+          <button type="submit" class="btn primary">Save Key</button>
+        </div>
+      </form>
+    </div>`;
+
+  const form = $('#add-key-form');
+  const cancel = $('#ak-cancel');
+  cancel.addEventListener('click', () => { location.hash = '#/keys'; });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('#ak-email').value.trim();
+    const providerID = $('#ak-provider').value;
+    const newProvider = $('#ak-new-provider').checked;
+    const newProviderName = $('#ak-new-provider-name').value.trim();
+    const key = $('#ak-key').value;
+    const label = $('#ak-label').value.trim();
+    const errors = [];
+    if (!emailRE.test(email)) errors.push('invalid email address');
+    if (!key) errors.push('key must not be empty');
+    if (!providerID && !newProvider) errors.push('select an existing provider or create a new one');
+    if (newProvider && !newProviderName) errors.push('enter a name for the new provider');
+    const msgBox = $('#add-key-msg');
+    if (errors.length) {
+      msgBox.textContent = errors.join(' · ');
+      msgBox.style.color = 'var(--danger)';
+      return;
+    }
+    msgBox.textContent = '';
+    msgBox.style.color = 'var(--text)';
+    try {
+      let providerIDNumber = Number(providerID);
+      if (newProvider) {
+        const created = await api('/api/providers', { method: 'POST', json: { name: newProviderName } }, { 'X-CSRF-Token': state.csrf });
+        providerIDNumber = created.id;
+      }
+      await api('/api/keys', { method: 'POST', json: { email, provider_id: providerIDNumber, key, label } }, { 'X-CSRF-Token': state.csrf });
+      toast('Saved');
+      location.hash = '#/keys';
+    } catch (err) {
+      msgBox.textContent = err.message;
+      msgBox.style.color = 'var(--danger)';
+    }
+  });
+  $('#ak-new-provider').addEventListener('change', () => {
+    $('#ak-new-provider-name').disabled = !$('#ak-new-provider').checked;
+  });
+}
+
 function openRevealModal(id) {
   api('/api/keys/' + id + '/reveal', { method: 'POST' }, { 'X-CSRF-Token': state.csrf })
     .then((data) => {
@@ -438,6 +531,8 @@ async function showView(view) {
     await renderDashboard();
   } else if (view === 'keys') {
     await renderKeys();
+  } else if (view === 'add-key') {
+    await renderAddKey();
   }
 }
 
