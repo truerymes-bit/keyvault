@@ -66,7 +66,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 - [ ] **T6.1 Backup envelope.** `VACUUM INTO` snapshot, encrypt, decrypt, verify integrity. Spec: section 7, amendment 12.
   Done when: tests round trip a DB, reject a tampered file, reject a wrong password.
-- [ ] **T6.2 Local backup and restore.** Also add POST /api/backup (downloads the encrypted file) and POST /api/restore (uploads one), and Backup and Restore buttons on the Settings page. Create and restore from a file, confirm step data, rollback copy of the current DB before restore. Spec: section 7 (Restore).
+- [ ] **T6.2 Local backup and restore.** Also add POST /api/backup (downloads the encrypted file) and POST /api/restore (uploads one), and Backup and Restore buttons on the Settings page. Also add POST /api/backup (downloads the encrypted file) and POST /api/restore (uploads one), and Backup and Restore buttons on the Settings page. Create and restore from a file, confirm step data, rollback copy of the current DB before restore. Spec: section 7 (Restore).
   Done when: a test backs up, changes data, restores, and finds the original data; the rollback copy exists.
 - [-] DEFERRED, skip: **T6.3 Google OAuth.** Client ID and secret settings, connect, callback with PKCE and state, encrypted token storage, disconnect, status. Spec: section 7 (OAuth Setup), amendments 5, 14.
   Done when: unit tests cover URL building, state check, token encryption; connect works manually with real credentials.
