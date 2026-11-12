@@ -1,2 +1,168 @@
-/* KeyVault styles. Built out in T5.1. */
-body { font-family: system-ui, sans-serif; background: #0f1720; color: #d8e1ea; margin: 2rem; }
+/* KeyVault — dark blue-gray dashboard per spec section 4. */
+:root {
+  --bg: #0f1420;
+  --bg-escalated: #161c2e;
+  --panel: #1b2334;
+  --panel-2: #232d44;
+  --border: #374151;
+  --border-strong: #4b5563;
+  --accent: #2563eb;
+  --accent-dim: #1d4ed8;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --radius: 10px;
+  --sidebar: 230px;
+  --topbar: 48px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- top bar ---------- */
+#topbar {
+  height: var(--topbar);
+  background: var(--bg-escalated);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+#topbar .brand { display: flex; align-items: center; gap: 10px; }
+#topbar .logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+}
+#topbar .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+#topbar .subtitle { font-size: 11px; color: var(--muted); }
+#topbar .spacer { flex: 1; }
+#topbar .status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+#topbar .status .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--success); animation: pulse 2s infinite;
+}
+@keyframes pulse { 50% { opacity: .4; } }
+
+/* ---------- layout ---------- */
+#layout { display: flex; height: calc(100vh - var(--topbar)); }
+#sidebar { width: var(--sidebar); background: var(--bg-escalated); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: var(--topbar); bottom: 0; }
+#sidebar .brand-row { padding: 14px 14px 2px; }
+#sidebar nav { flex: 1; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+#sidebar nav a {
+  display: flex; align-items: center; gap: 10px; text-decoration: none;
+  color: var(--muted); padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
+  font-weight: 500; transition: background .15s, color .15s;
+}
+#sidebar nav a:hover { background: var(--panel-2); color: var(--text); }
+#sidebar nav a.active {
+  background: var(--accent); color: #fff;
+}
+#sidebar nav a .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; opacity: .85; }
+#sidebar footer {
+  padding: 10px 14px; border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--muted);
+}
+#sidebar footer .badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  background: var(--success); color: #064e3b; font-size: 11px; font-weight: 700;
+}
+#main { flex: 1; margin-left: var(--sidebar); display: flex; flex-direction: column; min-width: 0; }
+#content { padding: 22px 26px 40px; max-width: 1180px; width: 100%; }
+
+/* ---------- views ---------- */
+.view { display: flex; flex-direction: column; gap: 18px; }
+.view h1 { margin: 0; font-size: 24px; letter-spacing: -.3px; }
+.view h2 { margin: 0 0 8px; font-size: 16px; color: var(--muted); }
+.view .lede { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+/* ---------- forms ---------- */
+.field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--text); }
+.field .hint { font-size: 12px; color: var(--muted); }
+input[type="text"], input[type="password"], input[type="email"], select, textarea {
+  width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--panel);
+  color: var(--text); border: 1px solid var(--border-strong); font-size: 14px;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.18);
+}
+textarea { resize: vertical; min-height: 80px; }
+.form-row { display: flex; gap: 16px; }
+.form-row > .field { flex: 1; }
+button { cursor: pointer; }
+.btn {
+  padding: 10px 16px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text);
+}
+.btn:hover { background: #2c3a56; }
+.btn.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.btn.primary:hover { background: var(--accent-dim); }
+.btn.success { background: var(--success); border-color: var(--success); color: #064e3b; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-row { display: flex; gap: 10px; align-items: center; }
+.btn-row .spacer { flex: 1; }
+.small { font-size: 12px; color: var(--muted); }
+
+/* ---------- locked / setup overlays ---------- */
+.overlay-backdrop {
+  position: fixed; inset: 0; background: rgba(6, 10, 20, .82);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.overlay-card {
+  width: min(420px, 92%); background: var(--bg-escalated); border: 1px solid var(--border);
+  border-radius: 14px; padding: 28px 28px 24px; box-shadow: 0 24px 48px rgba(0,0,0,.45);
+}
+.overlay-card h1 { margin: 0 0 6px; font-size: 20px; }
+.overlay-card .sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+.overlay-card .field { margin-bottom: 14px; }
+.overlay-card .footer { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+/* ---------- toast ---------- */
+#toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: #1f2937; color: var(--text); padding: 10px 16px; border-radius: 8px;
+  font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35); z-index: 60; max-width: 90vw;
+}
+#toast.show { opacity: 1; }
+
+/* ---------- empty state ---------- */
+.empty {
+  text-align: center; padding: 36px 16px; color: var(--muted);
+}
+.empty .icon { font-size: 28px; margin-bottom: 8px; }
+
+/* ---------- misc ---------- */
+hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.kbd { font-size: 11px; background: var(--panel-2); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
