@@ -389,6 +389,55 @@ async function renderAddKey() {
   });
 }
 
+async function renderProviders() {
+  const root = $('#view-root');
+  root.innerHTML = `
+    <div class="view">
+      <h1>Providers</h1>
+      <p class="lede">Setup notes shared by every key of a provider.</p>
+      <div id="providers-list"></div>
+    </div>`;
+  const list = $('#providers-list');
+  try {
+    const providers = await api('/api/providers');
+    if (!providers.length) {
+      list.innerHTML = `<div class="empty">No providers yet. <a href="#/keys/new">Add an API key</a> first.</div>`;
+      return;
+    }
+    for (const p of providers) {
+      const card = document.createElement('div');
+      card.className = 'panel';
+      card.innerHTML = `
+        <div class="provider-head">
+          <span class="provider-name">${escapeHtml(p.name)}</span>
+          <span class="badge">${p.key_count} key${p.key_count !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="small">${escapeHtml(p.emails && p.emails.length ? p.emails.join(', ') : '—')}</div>
+        <div class="field">
+          <label class="small">Setup notes</label>
+          <textarea id="notes-${p.id}" rows="4" placeholder="Provider setup instructions…">${escapeHtml(p.notes)}</textarea>
+        </div>
+        <div class="footer" style="justify-content:flex-end;">
+          <button class="btn" data-act="cancel-${p.id}">Cancel</button>
+          <button class="btn primary" data-act="save-${p.id}">Save notes</button>
+        </div>`;
+      list.appendChild(card);
+      card.querySelector(`[data-act="save-${p.id}"]`).addEventListener('click', async () => {
+        const notes = card.querySelector(`#notes-${p.id}`).value;
+        try {
+          await api('/api/providers/' + p.id + '/notes', { method: 'PUT', json: { notes } }, { 'X-CSRF-Token': state.csrf });
+          toast('Notes saved');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      card.querySelector(`[data-act="cancel-${p.id}"]`).addEventListener('click', () => card.remove());
+    }
+  } catch (err) {
+    root.innerHTML += `<div class="empty">Could not load providers: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
 function openRevealModal(id) {
   api('/api/keys/' + id + '/reveal', { method: 'POST' }, { 'X-CSRF-Token': state.csrf })
     .then((data) => {
