@@ -29,7 +29,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: tests prove the DB holds no plaintext key, list never returns plaintext, email validation and empty key rejected, multiple keys per email/provider allowed.
 - [x] **T3.3 Reveal and search.** Reveal endpoint, search across email, provider name, label. Spec: section 4.
   Done when: tests cover reveal returning the exact key, search hitting each of the three fields.
-- [ ] **T3.4 Dashboard stats.** Counts and recent lists endpoint. Spec: section 4 (Dashboard).
+- [x] **T3.4 Dashboard stats.** Counts and recent lists endpoint. Spec: section 4 (Dashboard).
   Done when: a test seeds data and checks every count.
 
 ## Phase 4: Bulk import
@@ -101,3 +101,4 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-12 | T3.1 | handlers/providers.go: GET/POST /api/providers, GET/PUT/DELETE /api/providers/{id}, PUT /api/providers/{id}/notes; list+get include key_count, get includes distinct emails; delete with keys -> 409 {error,key_count}; name trim+nonempty, 409 on case-insensitive duplicate; routes wrapped in RequireSession in main.go | tests pass (CRUD, uniqueness, 409, notes, locked) | T3.2 next: keys CRUD with enc subkey + fingerprint, masked list
 - 2026-11-12 | T3.2 | handlers/keys.go: GET/POST /api/keys, GET/PUT/DELETE /api/keys/{id}; AES-256-GCM enc via enc subkey, fingerprint = HMAC-SHA256 under hmac subkey stored BLOB; list/get masked (constant mask + 8-hex fingerprint prefix); email regex, empty key 400, provider must exist; metadata-only update keeps ciphertext; routes wrapped in RequireSession | tests pass (no plaintext in DB/responses, fingerprint deterministic, re-encrypt on key update, multi keys per email/provider) | T3.3 next: reveal + search
 - 2026-11-12 | T3.3 | POST /api/keys/{id}/reveal (decrypts with enc subkey, 404 unknown id); GET /api/keys?q= substring search across email/provider name/label, case-insensitive, LIKE wildcards escaped | tests pass; reveal returns exact key; search hits all three fields | T3.4 next: dashboard stats endpoint
+- 2026-11-12 | T3.4 | handlers/dashboard.go: GET /api/dashboard -> total_keys, total_providers, total_emails (distinct), recent_keys and recent_modified (5 each, masked) | test seeds 2 providers + 3 keys across 2 emails and checks every count + mask | go vet/tests pass | Phase 3 complete; T4.1 next: TXT import parser
