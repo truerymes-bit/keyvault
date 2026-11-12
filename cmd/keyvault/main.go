@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"keyvault/internal/database"
 	"keyvault/web"
 )
 
@@ -22,11 +24,27 @@ func envOr(key, fallback string) string {
 
 func main() {
 	addr := flag.String("addr", envOr("KEYVAULT_ADDR", "127.0.0.1:8080"), "listen address")
+	dataDir := flag.String("data-dir", envOr("KEYVAULT_DATA_DIR", "data"), "directory for the database file")
 	flag.Parse()
+
+	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
+		log.Fatalf("create data dir: %v", err)
+	}
+	dbPath := filepath.Join(*dataDir, "keyvault.db")
+	db, err := database.Open(dbPath)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if err := db.Ping(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable"}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.Handle("/", http.FileServer(http.FS(web.FS)))
