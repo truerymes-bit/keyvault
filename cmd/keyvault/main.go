@@ -69,6 +69,17 @@ func main() {
 	mux.HandleFunc("POST /api/auth/setup", authHandler.Setup)
 	mux.HandleFunc("POST /api/auth/unlock", authHandler.Unlock)
 	mux.HandleFunc("POST /api/auth/lock", authHandler.Lock)
+	// /api routes require an unlocked session.
+	protected := func(h http.HandlerFunc) http.Handler {
+		return handlers.RequireSession(sessions, h)
+	}
+	providersHandler := &handlers.ProvidersHandler{DB: db}
+	mux.Handle("GET /api/providers", protected(providersHandler.List))
+	mux.Handle("GET /api/providers/{id}", protected(providersHandler.Get))
+	mux.Handle("POST /api/providers", protected(providersHandler.Create))
+	mux.Handle("PUT /api/providers/{id}", protected(providersHandler.Update))
+	mux.Handle("DELETE /api/providers/{id}", protected(providersHandler.Delete))
+	mux.Handle("PUT /api/providers/{id}/notes", protected(providersHandler.UpdateNotes))
 	// Unmatched /api routes still require an unlocked session.
 	mux.Handle("/api/", handlers.RequireSession(sessions, http.NotFoundHandler()))
 

@@ -23,7 +23,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 ## Phase 3: Providers and keys
 
-- [ ] **T3.1 Providers API.** CRUD plus notes endpoint. Spec: sections 3, 4 (Providers View, Notes Editor), 8, amendment 8.
+- [x] **T3.1 Providers API.** CRUD plus notes endpoint. Spec: sections 3, 4 (Providers View, Notes Editor), 8, amendment 8.
   Done when: tests cover CRUD, case-insensitive uniqueness, 409 on deleting a provider with keys, notes persisting.
 - [ ] **T3.2 Keys API.** Create, get, update, delete with encryption and fingerprint. List responses are masked. Spec: sections 3, 4 (API Keys View, Add API Key), 8, amendment 2.
   Done when: tests prove the DB holds no plaintext key, list never returns plaintext, email validation and empty key rejected, multiple keys per email/provider allowed.
@@ -98,3 +98,4 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-12 | T2.1 | internal/encryption: Argon2id (t=3,m=64MiB,p=2) master key, HKDF-SHA256 subkeys keyvault/enc|hmac|backup, AES-256-GCM Seal/Open with fresh random nonce | tests pass (round trip, tamper, wrong key, nonce uniqueness, distinct subkeys, deterministic derivation) | T2.2 next: setup/unlock/lock/status endpoints, verifier in settings
 - 2026-11-12 | T2.2 | internal/security Auth (verifier = sealed known constant in settings, salt+params in settings, subkeys in memory only, zeroed on Lock), handlers/auth.go (GET /api/auth/status, POST setup/unlock/lock), wired in main.go | tests pass; manual curl run: status/setup/lock/unlock wrong+right all correct | test db removed; T2.3 next: sessions, CSRF, locked-state middleware
 - 2026-11-12 | T2.3 | internal/security/session.go (in-memory sessions, HttpOnly SameSite=Strict cookie, 15m idle timeout via -session-timeout/KEYVAULT_SESSION_TIMEOUT, expiry locks Auth), handlers/middleware.go RequireSession (401 locked, 403 missing/bad CSRF on non-GET, /api/auth/* exempt), auth handlers issue session + csrf_token, /api/ catch-all protected | tests pass; curl smoke: 401 locked, 404 with session | NOTE: T3+ routes must wrap handlers in RequireSession | test db removed; T3.1 next
+- 2026-11-12 | T3.1 | handlers/providers.go: GET/POST /api/providers, GET/PUT/DELETE /api/providers/{id}, PUT /api/providers/{id}/notes; list+get include key_count, get includes distinct emails; delete with keys -> 409 {error,key_count}; name trim+nonempty, 409 on case-insensitive duplicate; routes wrapped in RequireSession in main.go | tests pass (CRUD, uniqueness, 409, notes, locked) | T3.2 next: keys CRUD with enc subkey + fingerprint, masked list
