@@ -10,12 +10,14 @@ import (
 )
 
 type AuthHandler struct {
-	Auth *security.Auth
+	Auth     *security.Auth
+	Sessions *security.SessionManager
 }
 
 type statusResponse struct {
-	Setup    bool `json:"setup"`
-	Unlocked bool `json:"unlocked"`
+	Setup     bool   `json:"setup"`
+	Unlocked  bool   `json:"unlocked"`
+	CSRFToken string `json:"csrf_token,omitempty"`
 }
 
 type passwordRequest struct {
@@ -52,7 +54,12 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, statusResponse{Setup: setup, Unlocked: h.Auth.Unlocked()})
+	resp := statusResponse{Setup: setup}
+	if s := h.Sessions.Current(r); s != nil && h.Auth.Unlocked() {
+		resp.Unlocked = true
+		resp.CSRFToken = s.CSRF
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // Setup handles POST /api/auth/setup.
@@ -70,7 +77,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, statusResponse{Setup: true, Unlocked: true})
+	h.startSession(w, r)
 }
 
 // Unlock handles POST /api/auth/unlock.
@@ -90,11 +97,21 @@ func (h *AuthHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, statusResponse{Setup: true, Unlocked: true})
+	h.startSession(w, r)
+}
+
+func (h *AuthHandler) startSession(w http.ResponseWriter, r *http.Request) {
+	s, err := h.Sessions.Create(w)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, statusResponse{Setup: true, Unlocked: true, CSRFToken: s.CSRF})
 }
 
 // Lock handles POST /api/auth/lock.
 func (h *AuthHandler) Lock(w http.ResponseWriter, r *http.Request) {
+	h.Sessions.Destroy(w, r)
 	h.Auth.Lock()
 	setup, err := h.Auth.IsSetup()
 	if err != nil {

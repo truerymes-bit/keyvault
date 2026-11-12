@@ -24,9 +24,20 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func durationEnvOr(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		log.Printf("ignoring invalid %s value %q", key, v)
+	}
+	return fallback
+}
+
 func main() {
 	addr := flag.String("addr", envOr("KEYVAULT_ADDR", "127.0.0.1:8080"), "listen address")
 	dataDir := flag.String("data-dir", envOr("KEYVAULT_DATA_DIR", "data"), "directory for the database file")
+	sessionTimeout := flag.Duration("session-timeout", durationEnvOr("KEYVAULT_SESSION_TIMEOUT", 15*time.Minute), "idle session timeout")
 	flag.Parse()
 
 	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
@@ -51,11 +62,15 @@ func main() {
 	})
 	mux.Handle("/", http.FileServer(http.FS(web.FS)))
 
-	authHandler := &handlers.AuthHandler{Auth: security.NewAuth(db)}
+	auth := security.NewAuth(db)
+	sessions := security.NewSessionManager(auth, *sessionTimeout)
+	authHandler := &handlers.AuthHandler{Auth: auth, Sessions: sessions}
 	mux.HandleFunc("GET /api/auth/status", authHandler.Status)
 	mux.HandleFunc("POST /api/auth/setup", authHandler.Setup)
 	mux.HandleFunc("POST /api/auth/unlock", authHandler.Unlock)
 	mux.HandleFunc("POST /api/auth/lock", authHandler.Lock)
+	// Unmatched /api routes still require an unlocked session.
+	mux.Handle("/api/", handlers.RequireSession(sessions, http.NotFoundHandler()))
 
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
