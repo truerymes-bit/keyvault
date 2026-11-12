@@ -96,15 +96,47 @@ function isActive(view) {
   $$('nav a[data-view]').forEach((el) => el.classList.toggle('active', el.dataset.view === view));
 }
 
-function placeholderView(view) {
-  const v = VIEWS[view] || { name: view, icon: '•' };
+function renderDashboard(resp) {
   const root = $('#view-root');
+  const maxDate = (d) => d || '—';
+  const statCard = (label, value, icon) => `
+    <div class="stat-card">
+      <div class="stat-icon">${icon}</div>
+      <div class="stat-value">${escapeHtml(String(value))}</div>
+      <div class="stat-label">${escapeHtml(label)}</div>
+    </div>`;
+  const table = (items, label, dateCol) => {
+    if (!items.length) {
+      return `<div class="panel"><h2>${escapeHtml(label)}</h2><div class="empty">Nothing yet.</div></div>`;
+    }
+    const rows = items.map((k) => `
+      <tr>
+        <td>${escapeHtml(k.email)}</td>
+        <td>${escapeHtml(k.provider_name)}</td>
+        <td><code>${escapeHtml(k.key)}</code></td>
+        <td>${escapeHtml(maxDate(dateCol === 'created' ? k.created_at : k.updated_at))}</td>
+      </tr>`).join('');
+    return `
+      <div class="panel">
+        <h2>${escapeHtml(label)}</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Email</th><th>Provider</th><th>Key</th><th>${dateCol === 'created' ? 'Added' : 'Updated'}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
+  };
+
   root.innerHTML = `
     <div class="view">
-      <h1>${escapeHtml(v.name)}</h1>
-      <p class="lede">This page is being built.</p>
-      <div class="btn-row">
-        <a class="btn" href="#/keys">Back to API Keys</a>
+      <h1>Dashboard</h1>
+      <div class="stat-row">
+        ${statCard('API keys', resp.total_keys, '🔑')}
+        ${statCard('Providers', resp.total_providers, '📦')}
+        ${statCard('Email accounts', resp.total_emails, '✉️')}
+      </div>
+      <div class="panel-grid">
+        ${table(resp.recent_keys, 'Recently added keys', 'created')}
+        ${table(resp.recent_modified, 'Recently modified', 'updated')}
       </div>
     </div>`;
 }
