@@ -13,6 +13,7 @@ import (
 
 	"keyvault/internal/database"
 	"keyvault/internal/handlers"
+	"keyvault/internal/importer"
 	"keyvault/internal/security"
 	"keyvault/web"
 )
@@ -89,6 +90,11 @@ func main() {
 	mux.Handle("POST /api/keys/{id}/reveal", protected(keysHandler.Reveal))
 	dashboardHandler := &handlers.DashboardHandler{DB: db}
 	mux.Handle("GET /api/dashboard", protected(dashboardHandler.Stats))
+	importSessions := importer.NewSessionStore(30 * time.Minute)
+	importHandler := &handlers.ImportHandler{DB: db, Auth: auth, Sessions: importSessions}
+	mux.Handle("POST /api/import/parse", protected(importHandler.Parse))
+	mux.Handle("POST /api/import/validate", protected(importHandler.Validate))
+	mux.Handle("POST /api/import/commit", protected(importHandler.Commit))
 	// Unmatched /api routes still require an unlocked session.
 	mux.Handle("/api/", handlers.RequireSession(sessions, http.NotFoundHandler()))
 
