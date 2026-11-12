@@ -53,6 +53,7 @@ func newKeysEnv(t *testing.T) *keysTestEnv {
 	mux.Handle("POST /api/keys", protected(h.Create))
 	mux.Handle("PUT /api/keys/{id}", protected(h.Update))
 	mux.Handle("DELETE /api/keys/{id}", protected(h.Delete))
+	mux.Handle("POST /api/keys/{id}/reveal", protected(h.Reveal))
 
 	rec := httptest.NewRecorder()
 	s, err := sm.Create(rec)
@@ -219,5 +220,53 @@ func TestDeleteKey(t *testing.T) {
 	rec = e.do(http.MethodDelete, "/api/keys/1", "", true)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("re-delete: %d, want 404", rec.Code)
+	}
+}
+
+func TestRevealReturnsExactKey(t *testing.T) {
+	e := newKeysEnv(t)
+	plaintext := "sk-reveal-me-1234567890"
+	e.createKey("a@b.com", "x", plaintext)
+	rec := e.do(http.MethodPost, "/api/keys/1/reveal", "", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reveal: %d %s", rec.Code, rec.Body)
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["key"] != plaintext {
+		t.Fatalf("revealed key = %q, want %q", resp["key"], plaintext)
+	}
+	rec = e.do(http.MethodPost, "/api/keys/999/reveal", "", true)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("reveal missing: %d, want 404", rec.Code)
+	}
+}
+
+func TestSearchAcrossFields(t *testing.T) {
+	e := newKeysEnv(t)
+	e.createKey("alice@example.com", "work laptop", "sk-1")
+	e.createKey("bob@example.com", "personal", "sk-2")
+
+	cases := []struct {
+		q       string
+		wantLen int
+	}{
+		{"alice", 1},       // email
+		{"GEMINI", 2},      // provider name, case-insensitive
+		{"laptop", 1},      // label
+		{"example.com", 2}, // common email domain
+		{"nomatchxyz", 0},
+	}
+	for _, c := range cases {
+		rec := e.do(http.MethodGet, "/api/keys?q="+c.q, "", false)
+		var list []keyJSON
+		if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+			t.Fatalf("q=%q decode: %v", c.q, err)
+		}
+		if len(list) != c.wantLen {
+			t.Fatalf("q=%q: got %d keys, want %d", c.q, len(list), c.wantLen)
+		}
 	}
 }

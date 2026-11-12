@@ -45,6 +45,11 @@ type keyRequest struct {
 	Key        string `json:"key"`
 }
 
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 func keyID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
@@ -87,9 +92,19 @@ func (h *KeysHandler) subkeys(w http.ResponseWriter) *encryption.Subkeys {
 	return sk
 }
 
-// List handles GET /api/keys. Never returns plaintext.
+// List handles GET /api/keys. Never returns plaintext. Optional ?q= filters
+// by substring against email, provider name and label (case-insensitive).
 func (h *KeysHandler) List(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query(keySelect + " ORDER BY k.email COLLATE NOCASE, p.name COLLATE NOCASE, k.id")
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	sqlStr := keySelect
+	var args []any
+	if query != "" {
+		like := "%" + escapeLike(strings.ToLower(query)) + "%"
+		sqlStr += ` WHERE lower(k.email) LIKE ? ESCAPE '\' OR lower(p.name) LIKE ? ESCAPE '\' OR lower(k.label) LIKE ? ESCAPE '\'`
+		args = append(args, like, like, like)
+	}
+	sqlStr += " ORDER BY k.email COLLATE NOCASE, p.name COLLATE NOCASE, k.id"
+	rows, err := h.DB.Query(sqlStr, args...)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
@@ -295,4 +310,33 @@ func (h *KeysHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Reveal handles POST /api/keys/{id}/reveal. Returns the plaintext key;
+// the client is expected to display it briefly.
+func (h *KeysHandler) Reveal(w http.ResponseWriter, r *http.Request) {
+	sk := h.subkeys(w)
+	if sk == nil {
+		return
+	}
+	id, ok := keyID(w, r)
+	if !ok {
+		return
+	}
+	var ct, nonce []byte
+	err := h.DB.QueryRow("SELECT encrypted_key, nonce FROM api_keys WHERE id = ?", id).Scan(&ct, &nonce)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "key not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	plaintext, err := encryption.Open(sk.Enc, ct, nonce)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"key": string(plaintext)})
 }

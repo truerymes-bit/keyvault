@@ -86,6 +86,7 @@ func main() {
 	mux.Handle("POST /api/keys", protected(keysHandler.Create))
 	mux.Handle("PUT /api/keys/{id}", protected(keysHandler.Update))
 	mux.Handle("DELETE /api/keys/{id}", protected(keysHandler.Delete))
+	mux.Handle("POST /api/keys/{id}/reveal", protected(keysHandler.Reveal))
 	// Unmatched /api routes still require an unlocked session.
 	mux.Handle("/api/", handlers.RequireSession(sessions, http.NotFoundHandler()))
 
