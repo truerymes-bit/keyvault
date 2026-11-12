@@ -16,7 +16,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 - [x] **T2.1 Encryption package.** Argon2id derivation, HKDF subkeys, AES-256-GCM seal and open with a fresh nonce each time. Spec: section 6, amendments 3.
   Done when: tests cover round trip, tampered ciphertext failing, wrong key failing, nonce uniqueness.
-- [ ] **T2.2 Setup and unlock.** Verifier, setup, unlock, lock, status endpoints. Key held in memory only. Spec: section 6, amendments 4, 7.
+- [x] **T2.2 Setup and unlock.** Verifier, setup, unlock, lock, status endpoints. Key held in memory only. Spec: section 6, amendments 4, 7.
   Done when: tests cover first-time setup, wrong password rejected, correct password unlocks, lock clears the key.
 - [ ] **T2.3 Sessions and CSRF.** HTTP-only SameSite cookie, idle timeout, CSRF token on state-changing requests, middleware that blocks every `/api` route except auth while locked. Spec: section 6.
   Done when: tests cover locked access refused, missing CSRF token refused, expired session refused.
@@ -96,3 +96,4 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-12 | T1.2 | internal/database: Open() with WAL + foreign keys, user_version migration runner, schema.sql v1 (providers with NOCASE unique name index, api_keys with fingerprint BLOB and (email, provider_id, fingerprint) index, settings key/value, ON DELETE RESTRICT) | tests pass (go vet, go test ./...) | T1.3 next: wire Open() into cmd/keyvault on start
 - 2026-11-12 | T1.3 | cmd/keyvault: -addr/-data-dir flags (KEYVAULT_ADDR/KEYVAULT_DATA_DIR env), data dir created 0700, database.Open on start, /healthz pings DB, graceful shutdown kept | verified: build ok, server on 127.0.0.1:18099 returned {"status":"ok"}, data/keyvault.db created | stray test db left in data/ (gitignored); T2.1 next
 - 2026-11-12 | T2.1 | internal/encryption: Argon2id (t=3,m=64MiB,p=2) master key, HKDF-SHA256 subkeys keyvault/enc|hmac|backup, AES-256-GCM Seal/Open with fresh random nonce | tests pass (round trip, tamper, wrong key, nonce uniqueness, distinct subkeys, deterministic derivation) | T2.2 next: setup/unlock/lock/status endpoints, verifier in settings
+- 2026-11-12 | T2.2 | internal/security Auth (verifier = sealed known constant in settings, salt+params in settings, subkeys in memory only, zeroed on Lock), handlers/auth.go (GET /api/auth/status, POST setup/unlock/lock), wired in main.go | tests pass; manual curl run: status/setup/lock/unlock wrong+right all correct | test db removed; T2.3 next: sessions, CSRF, locked-state middleware

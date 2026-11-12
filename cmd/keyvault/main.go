@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"keyvault/internal/database"
+	"keyvault/internal/handlers"
+	"keyvault/internal/security"
 	"keyvault/web"
 )
 
@@ -48,6 +50,12 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.Handle("/", http.FileServer(http.FS(web.FS)))
+
+	authHandler := &handlers.AuthHandler{Auth: security.NewAuth(db)}
+	mux.HandleFunc("GET /api/auth/status", authHandler.Status)
+	mux.HandleFunc("POST /api/auth/setup", authHandler.Setup)
+	mux.HandleFunc("POST /api/auth/unlock", authHandler.Unlock)
+	mux.HandleFunc("POST /api/auth/lock", authHandler.Lock)
 
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
