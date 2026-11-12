@@ -68,11 +68,11 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: tests round trip a DB, reject a tampered file, reject a wrong password.
 - [ ] **T6.2 Local backup and restore.** Create and restore from a file, confirm step data, rollback copy of the current DB before restore. Spec: section 7 (Restore).
   Done when: a test backs up, changes data, restores, and finds the original data; the rollback copy exists.
-- [ ] **T6.3 Google OAuth.** Client ID and secret settings, connect, callback with PKCE and state, encrypted token storage, disconnect, status. Spec: section 7 (OAuth Setup), amendments 5, 14.
+- [-] DEFERRED, skip: **T6.3 Google OAuth.** Client ID and secret settings, connect, callback with PKCE and state, encrypted token storage, disconnect, status. Spec: section 7 (OAuth Setup), amendments 5, 14.
   Done when: unit tests cover URL building, state check, token encryption; connect works manually with real credentials.
-- [ ] **T6.4 Drive backup and restore.** Upload, list history, download, restore, over REST. Spec: section 7.
+- [-] DEFERRED, skip: **T6.4 Drive backup and restore.** Upload, list history, download, restore, over REST. Spec: section 7.
   Done when: manual run uploads an encrypted file visible in Drive and restores from it.
-- [ ] **T6.5 Scheduled backups and Settings UI.** Spec: sections 7, 4.
+- [-] DEFERRED, skip: **T6.5 Scheduled backups and Settings UI.** Spec: sections 7, 4.
   Done when: the schedule setting triggers a backup and the Settings page shows status and history.
 
 ## Phase 7: Packaging

@@ -43,3 +43,7 @@ These override `docs/spec.md` where they conflict.
 12. **Backup format.** Snapshot with `VACUUM INTO`. Envelope: magic bytes, version, Argon2id salt and parameters, nonce, AES-GCM ciphertext under the backup subkey, header as additional data. Restoring on a fresh machine needs only the master password.
 13. **Docker.** The container binds `0.0.0.0:8080` internally. Compose publishes `127.0.0.1:8080:8080` only.
 14. **Google OAuth.** Redirect URI is `http://127.0.0.1:<port>/api/google/callback`. Scope is `https://www.googleapis.com/auth/drive.file`. Use `state` and PKCE.
+
+## Deferred work
+
+Tasks marked `[-]` in PLAN.md are deferred. Skip them. Google Drive integration (T6.3 to T6.5) is out of scope: do not build OAuth, Drive calls, or scheduled backups. In T5.7 leave out the Google Drive settings section. In T8.3 skip spec section 11 item 13, and read item 14 as: the local backup file is encrypted.
