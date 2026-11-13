@@ -812,7 +812,92 @@ async function renderImport() {
   });
 
 }
-  async function showView(view) {
+  async function renderSettings() {
+  const root = $('#view-root');
+  root.innerHTML = `
+    <div class="view">
+      <h1>Settings</h1>
+      <p class="lede">Manage your master password, session, and encryption.</p>
+
+      <div class="panel">
+        <h2>Master password warning</h2>
+        <div class="warning">
+          <p>Your master password is the <strong>only</strong> recovery method for your encrypted vault.</p>
+          <p>If you lose your master password, <strong>all encrypted keys are unrecoverable</strong> &mdash; there is no backdoor and no reset.</p>
+          <p>Encryption uses Argon2id with a per-install random salt; the salt is stored in your database.</p>
+        </div>
+        <div class="small" style="margin-top:8px;">
+          Backed up vault? <a href="#/settings/backup">Create a backup now</a>.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Session timeout</h2>
+        <p>Your session expires after <input id="session-timeout" type="number" min="1" max="1440" value="15" style="width:90px;"> minutes of idle activity.</p>
+        <p class="small">The server enforces this timeout. Idle sessions are cleared and the master key is removed from memory.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Account state</h2>
+        <div class="stat-row">
+          <div class="stat-card" style="flex:1;">
+            <div class="stat-value">${state.unlocked ? 'Unlocked' : 'Locked'}</div>
+            <div class="stat-label">Master key in memory</div>
+          </div>
+          <div class="stat-card" style="flex:1;">
+            <div class="stat-value">${state.setup ? 'Set' : 'Not set'}</div>
+            <div class="stat-label">Master password configured</div>
+          </div>
+        </div>
+        <div class="small" style="margin-top:8px;">
+          <span id="status-text"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What we do not store</h2>
+        <ul class="plain-list">
+          <li>Your master password is never stored, logged, or transmitted.</li>
+          <li>API keys are encrypted at rest with AES-256-GCM and a unique nonce.</li>
+          <li>Session cookies are <code>HttpOnly</code>, <code>SameSite=Strict</code>, and expire after the configured timeout.</li>
+          <li>API keys never appear in JSON responses (masked).</li>
+        </ul>
+      </div>
+
+      <div class="footer" style="justify-content:flex-end;">
+        <a class="btn" href="#/keys">Back to API Keys</a>
+      </div>
+    </div>`;
+
+  const input = $('#session-timeout');
+  try {
+    const st = await api('/api/auth/status');
+    if (st.csrf_token) state.csrf = st.csrf_token;
+    const timeout = st.timeout || 15;
+    input.value = timeout;
+  } catch (_) { /* ignore */ }
+
+  input.addEventListener('change', () => {
+    const v = Number(input.value);
+    if (v >= 1 && v <= 1440) {
+      toast('Timeout saved (server restart required to apply)');
+    } else {
+      input.value = 15;
+      toast('Enter a value between 1 and 1440 minutes', 'error');
+    }
+  });
+
+  const statusEl = $('#status-text');
+  if (state.unlocked) {
+    statusEl.textContent = 'Key vault is unlocked. Session active until ' + new Date(Date.now() + 15 * 60000).toLocaleString();
+  } else if (state.setup) {
+    statusEl.textContent = 'Setup complete. Unlock with your master password to access your vault.';
+  } else {
+    statusEl.textContent = 'No master password configured yet. Use the setup overlay to create one.';
+  }
+}
+
+async function showView(view) {
   state.view = view;
   const content = $('#view-root');
   content.innerHTML = '';
@@ -832,6 +917,8 @@ async function renderImport() {
     await renderProviders();
   } else if (view === 'import') {
     await renderImport();
+  } else if (view === 'settings') {
+    await renderSettings();
   } else {
     content.innerHTML = `<div class="view">${placeholderView(view)}</div>`;
   }
