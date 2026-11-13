@@ -92,7 +92,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a finished task `[?]` and write the test steps in the Log. The user tests, then changes `[?]` to `[x]`, or to `[!]` with failures noted. Do any `[!]` task before any `[ ]` task.
 
-- [ ] **R1 Auth modals and messages.** Setup and unlock modal cannot be dismissed (no backdrop click, no Escape). After the master password is created, the same modal shows only the password field and an "Unlock" button. Remove the words "setup" and "Account Created". The success text uses the normal text color. A mismatched confirmation shows its error inside the modal. After unlocking, the modal closes and stays closed through navigation and reload while the session is valid. After a browser close and server restart, it shows once. Remove all bottom-of-screen toasts: every message appears inline in the modal or form that triggered it.
+- [?] **R1 Auth modals and messages.** Setup and unlock modal cannot be dismissed (no backdrop click, no Escape). After the master password is created, the same modal shows only the password field and an "Unlock" button. Remove the words "setup" and "Account Created". The success text uses the normal text color. A mismatched confirmation shows its error inside the modal. After unlocking, the modal closes and stays closed through navigation and reload while the session is valid. After a browser close and server restart, it shows once. Remove all bottom-of-screen toasts: every message appears inline in the modal or form that triggered it.
   Done when: you can set a password, unlock, click every menu item with no modal reappearing, and see every error inside its own modal.
 - [ ] **R2 Reveal and copy.** The reveal modal shows the real key in a read-only field with Copy and Close buttons. Copy puts the real key on the clipboard. Close works by button, Escape, and backdrop click, and clears the key from the DOM. The Copy button in a list row fetches the real key and copies it, never the masked text on screen. Find and fix whatever interferes with the Backspace key (check global keydown listeners and focus handling).
   Done when: a copied key pastes as the real key and Backspace works everywhere afterward.
@@ -134,7 +134,18 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 2026-11-12 | T8.2 | Security review: master password never stored, subkeys cleared on Lock(), session cookie HttpOnly+SameSite=Strict, CSRF on all mutating /api routes, /api/auth/* exempt, sessions in-memory, backup AES-256-GCM, go vet clean, all tests pass.
 
 ## Log
-2026-11-12 | T8.3 | Acceptance run: 18/19 items pass. 13 (Google Drive) deliberately deferred per plan; 1-12, 14-17 verified. Full test suite passes; go vet clean.
+- 2026-11-13 | R1 | Marked box `[?]`; browser test steps written for user verification. | verify: browser E2E on fresh server+DB
+
+- R1 browser test steps (at 1440x900 and 390px wide):
+  1. Fresh isolated server + fresh DB (no verifier row). Open http://127.0.0.1:8082/.
+  2. Setup: setup overlay opens ("Create an account" title). Enter master password + confirm; click "Create account". Modal stays open; success text uses normal (non-green) text color; title "Create an account" (no "Account Created").
+  3. Mismatch inline error: type mismatched passwords -> "Passwords do not match" shown inside the modal (#setup-error), NOT a bottom toast.
+  4. No dismiss: backdrop click and Escape do NOT close the modal (anti-dismiss).
+  5. Unlock: after setup, the same modal shows only "Master password" field + "Unlock" button. Enter password, click "Unlock". Modal closes and stays closed through navigation and reload.
+  6. Navigation: click Dashboard, API Keys, Providers, Import, Settings -> no modal reappears.
+  7. Reload: page refresh after unlock -> modal does NOT reappear (valid session).
+  8. Restart: browser close + server (re)start -> modal shows once; unlock -> stays closed.
+  9. Toast check: no bottom-of-screen #toast messages for any error (all inline in modal/form).
 
 - 2026-11-12 | T5.1 | Unlock modal loop fixed: (1) state.unlocked = true in doUnlock(); (2) removed buggy headers.set() on {} in api(); (3) wired #overlay-unlock click listener. Browser E2E: unlock modal -> overlay hidden, state.unlocked true, dashboard renders. | verify: go build, go test, go vet clean
 - 2026-11-12 | T5.2 | Dashboard data verified: real dashboard with stat cards, recent keys, recent modified tables. | verify: go build clean, browser E2E: Dashboard shows live counts and recent lists
