@@ -171,28 +171,28 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
 	v := decode(t, rec)
-		// Since R4, unrecognized headings without an email become candidate
-		// providers instead of unmatched lines, and new providers are created on
-		// commit. "Unknown Section" is now a candidate provider, so:
-		// - 6 imports (erin is now under "Unknown Section", not attention)
-		// - 2 skips (alice dup in-file, db-alice DB dup)
-		// - 2 duplicates, 0 attention, 2 providers_created (OpenRouter + Unknown Section)
-		// - 1 unmatched (only "broken @ line").
-		if got := int(v["imported"].(float64)); got != 6 {
-			t.Fatalf("imported = %d, want 6 (%v)", got, v)
-		}
-		if got := int(v["skipped"].(float64)); got != 2 {
-			t.Fatalf("skipped = %d, want 2 (%v)", got, v)
-		}
-		if got := int(v["duplicates"].(float64)); got != 2 {
-			t.Fatalf("duplicates = %d, want 2 (%v)", got, v)
-		}
-		if got := int(v["attention"].(float64)); got != 0 {
-			t.Fatalf("attention = %d, want 0 (%v)", got, v)
-		}
-		if got := int(v["providers_created"].(float64)); got != 2 {
-			t.Fatalf("providers_created = %d, want 2 (%v)", got, v)
-		}
+	// Since R4, unrecognized headings without an email become candidate
+	// providers instead of unmatched lines, and new providers are created on
+	// commit. "Unknown Section" is now a candidate provider, so:
+	// - 6 imports (erin is now under "Unknown Section", not attention)
+	// - 2 skips (alice dup in-file, db-alice DB dup)
+	// - 2 duplicates, 0 attention, 2 providers_created (OpenRouter + Unknown Section)
+	// - 1 unmatched (only "broken @ line").
+	if got := int(v["imported"].(float64)); got != 6 {
+		t.Fatalf("imported = %d, want 6 (%v)", got, v)
+	}
+	if got := int(v["skipped"].(float64)); got != 2 {
+		t.Fatalf("skipped = %d, want 2 (%v)", got, v)
+	}
+	if got := int(v["duplicates"].(float64)); got != 2 {
+		t.Fatalf("duplicates = %d, want 2 (%v)", got, v)
+	}
+	if got := int(v["attention"].(float64)); got != 0 {
+		t.Fatalf("attention = %d, want 0 (%v)", got, v)
+	}
+	if got := int(v["providers_created"].(float64)); got != 2 {
+		t.Fatalf("providers_created = %d, want 2 (%v)", got, v)
+	}
 
 	// Raw DB must not contain any plaintext key.
 	rows, err := e.db.Query("SELECT encrypted_key FROM api_keys")
