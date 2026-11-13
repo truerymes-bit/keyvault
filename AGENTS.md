@@ -47,3 +47,13 @@ These override `docs/spec.md` where they conflict.
 ## Deferred work
 
 Tasks marked `[-]` in PLAN.md are deferred. Skip them. Google Drive integration (T6.3 to T6.5) is out of scope: do not build OAuth, Drive calls, or scheduled backups. In T5.7 leave out the Google Drive settings section. In T8.3 skip spec section 11 item 13, and read item 14 as: the local backup file is encrypted.
+
+## Frontend rules (from user testing)
+
+- Phase 5R replaces T5.x. For R tasks, set the box to `[?]`, write exact browser test steps in the Log, and stop. Only the user changes `[?]` to `[x]`. Do any `[!]` task first.
+- Import is a flow opened from the API Keys page. There is no Import page or sidebar item.
+- Add Key lives on the API Keys page.
+- No toasts at the bottom of the screen. Messages appear inline in the modal or form that caused them.
+- Modals for setup and unlock cannot be dismissed by clicking outside or pressing Escape.
+- Never copy masked text. Copy always uses the revealed key.
+- Test at 1440x900 and 390px wide, not only on a large display.

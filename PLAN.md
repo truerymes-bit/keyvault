@@ -45,20 +45,20 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 ## Phase 5: Frontend
 
-- [x] **T5.1 Shell and unlock screen.** `index.html`, `style.css`, `app.js`, sidebar, view router, setup and unlock screens, CSRF handling in the fetch wrapper. Spec: section 4 (design requirements, Sidebar).
+- [-] SUPERSEDED by Phase 5R: **T5.1 Shell and unlock screen.** `index.html`, `style.css`, `app.js`, sidebar, view router, setup and unlock screens, CSRF handling in the fetch wrapper. Spec: section 4 (design requirements, Sidebar).
   Done when: in a browser you can set a master password, lock, and unlock.
-- [x] **T5.2 Dashboard view.** Spec: section 4 (Dashboard).
+- [-] SUPERSEDED by Phase 5R: **T5.2 Dashboard view.** Spec: section 4 (Dashboard).
   Done when: the dashboard shows live counts and recent items.
-- [x] **T5.3 API Keys view.** Expandable by email, masked keys, search, reveal, copy, delete. Spec: section 4 (API Keys View).
+- [-] SUPERSEDED by Phase 5R: **T5.3 API Keys view.** Expandable by email, masked keys, search, reveal, copy, delete. Spec: section 4 (API Keys View).
   Done when: all controls work against the real API.
 - [ ] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
   Done when: add and edit both work and show server validation errors.
-- [x] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group.
+- [-] SUPERSEDED by Phase 5R: **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group.
   Done when: selecting a provider shows count, emails, notes, and notes save.
-- [x] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
+- [-] SUPERSEDED by Phase 5R: **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
   Done when: a pasted file goes through preview, edit, and commit in the browser.
-- [x] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
-- [x] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
+- [-] SUPERSEDED by Phase 5R: **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
+- [-] SUPERSEDED by Phase 5R: **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
   Done when: every view is usable at 375px wide.
 
 ## Phase 6: Backup and Google Drive
@@ -87,6 +87,25 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: a pasted file goes through preview, edit, and commit in the browser. | 2026-11-12 | T8.1 | TestT81EndToEndImport: parse (13 rows) -> commit (skip dup mode) -> DB count 5; verified masking; go test ./internal/handlers/... passes.
 - [x] **T8.2 Security review.** Check logs for keys, cookies flags, CSRF on every mutating route, locked-state access, session expiry. Fix what fails. | 2026-11-12 | T8.2 | Security review complete: master password never stored, subkeys cleared on Lock(), session cookie HttpOnly+SameSite=Strict, CSRF on all mutating /api routes, /api/auth/* exempt, sessions in-memory, backup AES-256-GCM, go vet clean, all tests pass.
 - [x] **T8.3 Acceptance run.** Walk spec section 11, items 1 to 17, record pass or fail for each in the Log. | 2026-11-12 | T8.3 | Acceptance run: 18/19 items pass. 13 (Google Drive) deliberately deferred per plan; 1-12, 14-17 verified. Full test suite passes; go vet clean.
+
+## Phase 5R: Frontend rework
+
+Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a finished task `[?]` and write the test steps in the Log. The user tests, then changes `[?]` to `[x]`, or to `[!]` with failures noted. Do any `[!]` task before any `[ ]` task.
+
+- [ ] **R1 Auth modals and messages.** Setup and unlock modal cannot be dismissed (no backdrop click, no Escape). After the master password is created, the same modal shows only the password field and an "Unlock" button. Remove the words "setup" and "Account Created". The success text uses the normal text color. A mismatched confirmation shows its error inside the modal. After unlocking, the modal closes and stays closed through navigation and reload while the session is valid. After a browser close and server restart, it shows once. Remove all bottom-of-screen toasts: every message appears inline in the modal or form that triggered it.
+  Done when: you can set a password, unlock, click every menu item with no modal reappearing, and see every error inside its own modal.
+- [ ] **R2 Reveal and copy.** The reveal modal shows the real key in a read-only field with Copy and Close buttons. Copy puts the real key on the clipboard. Close works by button, Escape, and backdrop click, and clears the key from the DOM. The Copy button in a list row fetches the real key and copies it, never the masked text on screen. Find and fix whatever interferes with the Backspace key (check global keydown listeners and focus handling).
+  Done when: a copied key pastes as the real key and Backspace works everywhere afterward.
+- [ ] **R3 API Keys page.** Style it. Remove redundant text: when there are 0 keys, show one empty state with "Add key" and "Import" buttons, not both a count line and "No matching keys". Add the Add Key form as a modal opened from this page, with an existing-or-new provider choice and inline validation errors. Add an "Import" button here (the flow is built in R5). Links use a light accent color readable on the dark blue background, not purple.
+  Done when: add, edit, delete, reveal, copy, and search all work from this page.
+- [ ] **R4 Provider recognition in the parser.** Currently only 2 of the user's 5 provider headings are recognized, so 16 records are flagged. A line with no email that looks like a heading is a candidate provider: group the records under it and return it as a "new provider detected" item the user confirms with one click, not as unmatched lines. Known names still match case-insensitively with trailing words ("Gemini API Key"). Fix the "rows not iterable" error when parsing a second time. Parse state resets on cancel and after import. Test with a 5-provider file where 3 headings are not in the built-in list.
+  Done when: go tests pass, and the user's file imports with all records assigned to a provider.
+- [ ] **R5 Import flow.** A modal wizard opened from the API Keys page, three steps. Step 1: paste or upload, optional custom provider names. Step 2: review table inside a width-limited, internally scrolling container. All valid rows are selected by default (remove the "select all valid" button). Rows needing attention appear first. Status text shows only for problems, in plain words. Unmatched rows have an email field, a key field, a provider dropdown listing every provider plus "Create new provider", and a small subtle remove control. Duplicates are skipped by default, shown as a count with an expandable list, no dropdown. Step 3: summary of imported, skipped, duplicates, needs attention. Closing the flow clears all state and refreshes the key list. Remove Import from the sidebar.
+  Done when: pasting the user's file ends with the correct counts and keys on the API Keys page.
+- [ ] **R6 Providers, Dashboard, Settings.** Style the Providers page. Remove "Recently modified" from the dashboard. Settings contains only: a Lock now button, session timeout, Backup (POST /api/backup downloads the encrypted file), and Restore (upload a file). Fix the "error: locked" on backup. Remove the conflicting "Account state" block.
+  Done when: backup downloads a file and restore from it works.
+- [ ] **R7 Layout.** Center content with a max width of about 1200px. Use rem units. Tables scroll inside their own container. Test at 1440x900, 1920x1080, and 390px wide, not only a 4K display.
+  Done when: every page looks right at those three sizes.
 
 ## Log
 
