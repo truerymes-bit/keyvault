@@ -95,6 +95,9 @@ func main() {
 	mux.Handle("POST /api/import/parse", protected(importHandler.Parse))
 	mux.Handle("POST /api/import/validate", protected(importHandler.Validate))
 	mux.Handle("POST /api/import/commit", protected(importHandler.Commit))
+	backupHandler := &handlers.BackupHandler{DB: db, DBPath: dbPath, Auth: auth}
+	mux.Handle("POST /api/backup", protected(backupHandler.Backup))
+	mux.Handle("POST /api/restore", protected(backupHandler.Restore))
 	// Unmatched /api routes still require an unlocked session.
 	mux.Handle("/api/", handlers.RequireSession(sessions, http.NotFoundHandler()))
 

@@ -864,6 +864,25 @@ async function renderImport() {
         </ul>
       </div>
 
+      <div class="panel">
+        <h2>Local backup and restore</h2>
+        <p class="small">Download an encrypted backup of your database. Restore from a backup file (with a rollback copy of the current database).</p>
+
+        <div class="form-group" style="margin-top:12px;">
+          <button class="btn" id="backup-btn">Backup now</button>
+          <span id="backup-status" class="small" style="display:none;"></span>
+        </div>
+
+        <div class="form-group" style="margin-top:12px;">
+          <label for="restore-file">Restore from backup file</label>
+          <input type="file" id="restore-file" accept=".kbk" style="display:none;">
+          <button class="btn" id="restore-btn">Choose backup file</button>
+          <span id="restore-status" class="small" style="display:none;"></span>
+        </div>
+
+        <div id="restore-result" class="small" style="display:none; margin-top:8px;"></div>
+      </div>
+
       <div class="footer" style="justify-content:flex-end;">
         <a class="btn" href="#/keys">Back to API Keys</a>
       </div>
@@ -887,6 +906,83 @@ async function renderImport() {
     }
   });
 
+  $('#backup-btn').addEventListener('click', async () => {
+    const btn = $('#backup-btn');
+    const status = $('#backup-status');
+    btn.disabled = true;
+    btn.textContent = 'Backing up...';
+    status.style.display = 'inline';
+    status.textContent = 'Creating backup...';
+    try {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': state.csrf },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Backup failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'keyvault-backup-' + new Date().toISOString().slice(0, 19).replace(/[:-]/g, '') + '.kbk';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Backup now';
+      status.style.display = 'none';
+    }
+  });
+
+  $('#restore-btn').addEventListener('click', () => {
+    $('#restore-file').click();
+  });
+
+  $('#restore-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const btn = $('#restore-btn');
+    const status = $('#restore-status');
+    const result = $('#restore-result');
+    btn.disabled = true;
+    btn.textContent = 'Restoring...';
+    status.style.display = 'inline';
+    status.textContent = 'Restoring...';
+    result.style.display = 'none';
+    try {
+      const formData = new FormData();
+      formData.append('backup', file);
+      const res = await fetch('/api/restore', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': state.csrf },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Restore failed');
+      }
+      result.style.display = 'block';
+      result.textContent = 'Restored at ' + data.backup_date + ' (rollback saved to: ' + fileUploadName(file) + ')';
+      toast('Restore complete');
+    } catch (err) {
+      result.style.display = 'block';
+      result.textContent = 'Error: ' + err.message;
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Choose backup file';
+      status.style.display = 'none';
+      e.target.value = '';
+    }
+  });
+
   const statusEl = $('#status-text');
   if (state.unlocked) {
     statusEl.textContent = 'Key vault is unlocked. Session active until ' + new Date(Date.now() + 15 * 60000).toLocaleString();
@@ -895,6 +991,10 @@ async function renderImport() {
   } else {
     statusEl.textContent = 'No master password configured yet. Use the setup overlay to create one.';
   }
+}
+
+function fileUploadName(file) {
+  return file ? file.name : 'unknown';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
