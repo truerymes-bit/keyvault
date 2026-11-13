@@ -39,9 +39,12 @@ function toast(message, kind) {
 }
 
 async function api(path, options = {}) {
-  const { method = 'GET', body, json = true, headers = {} } = options;
+  let { method = 'GET', body, json = true, headers = {} } = options;
   const hasCSRF = state.csrf && !path.startsWith('/api/auth/');
   if (hasCSRF) headers.set('X-CSRF-Token', state.csrf);
+  if (json !== true) {
+    body = JSON.stringify(json);
+  }
   const res = await fetch(path, {
     method,
     headers: {
@@ -50,7 +53,7 @@ async function api(path, options = {}) {
       ...(hasCSRF ? { 'X-CSRF-Token': state.csrf } : {}),
     },
     credentials: 'same-origin',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body,
   });
   if (res.status === 401) return { locked: true, status: res.status };
   if (!res.ok) {
@@ -75,17 +78,19 @@ function showOverlay(title, sub, footer) {
   if (prev) prev.remove();
   const footerEl = $('#overlay-row');
   if (footer !== undefined && footer !== null && footerEl) {
-    footerEl.replaceWith(footer);
+    footerEl.innerHTML = footer; // innerHTML parses the injected markup into real elements
   } else if (footerEl) {
     footerEl.remove();
   }
   $('#overlay-backdrop').hidden = false;
-  $('#overlay-password').focus();
+  const pwd = $('#overlay-password') || $('#overlay-setup-pwd');
+  if (pwd) pwd.focus();
 }
 
 function hideOverlay() {
   $('#overlay-backdrop').hidden = true;
-  $('#overlay-password').value = '';
+  const pwd = $('#overlay-password') || $('#overlay-setup-pwd');
+  if (pwd) pwd.value = '';
 }
 
 /* ---------- view router ---------- */
@@ -1108,18 +1113,78 @@ async function doSetup() {
   toast('Account created. Unlock with your master password next time.');
 }
 
+const setupFormHTML = `
+  <div class="field">
+    <label for="overlay-setup-pwd">Master password</label>
+    <input type="password" id="overlay-setup-pwd" autocomplete="new-password" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="overlay-setup-confirm">Confirm password</label>
+    <input type="password" id="overlay-setup-confirm" autocomplete="new-password" spellcheck="false">
+  </div>
+  <div class="footer">
+    <button class="btn" id="overlay-cancel">Cancel</button>
+    <button class="btn primary" id="overlay-create">Create account</button>
+  </div>
+`.trim();
+
+const unlockFormHTML = `
+  <div class="field">
+    <label for="overlay-password">Master password</label>
+    <input type="password" id="overlay-password" autocomplete="current-password" spellcheck="false">
+  </div>
+  <div class="footer">
+    <button class="btn" id="overlay-cancel">Cancel</button>
+    <button class="btn primary" id="overlay-unlock">Unlock</button>
+  </div>
+`.trim();
+
 /* ---------- init ---------- */
 async function init() {
   if (state.unlocked) { showView('dashboard'); return; }
   try {
     const st = await api('/api/auth/status');
     if (st.setup) {
-      showOverlay('Unlock KeyVault', 'Enter your master password to continue.');
+      showOverlay('Unlock KeyVault', 'Enter your master password to continue.', unlockFormHTML);
+      const unlockBtn = $('#overlay-unlock');
+      if (unlockBtn) unlockBtn.focus();
+      const cancelBtn = $('#overlay-cancel');
+      if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
+      const backdrop = $('#overlay-backdrop');
+      if (backdrop) backdrop.addEventListener('click', (e) => {
+        if (e.target.id === 'overlay-backdrop') hideOverlay();
+      });
+      const pwd = $('#overlay-password');
+      if (pwd) pwd.addEventListener('keydown', (e) => { if (e.key === 'Enter') doUnlock(); });
     } else {
-      showOverlay('Create an account', 'Set a master password to encrypt your key vault.');
+      showOverlay('Create an account', 'Set a master password to encrypt your key vault.', setupFormHTML);
+      const setupPwd = $('#overlay-setup-pwd');
+      if (setupPwd) setupPwd.focus();
+      const createBtn = $('#overlay-create');
+      if (createBtn) createBtn.addEventListener('click', doSetup);
+      const setupPwdEl = $('#overlay-setup-pwd');
+      if (setupPwdEl) setupPwdEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSetup(); });
+      const cancelBtn = $('#overlay-cancel');
+      if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
+      const backdrop = $('#overlay-backdrop');
+      if (backdrop) backdrop.addEventListener('click', (e) => {
+        if (e.target.id === 'overlay-backdrop') hideOverlay();
+      });
     }
   } catch (_) {
-    showOverlay('Create an account', 'Set a master password to encrypt your key vault.');
+    showOverlay('Create an account', 'Set a master password to encrypt your key vault.', setupFormHTML);
+    const setupPwd = $('#overlay-setup-pwd');
+    if (setupPwd) setupPwd.focus();
+    const createBtn = $('#overlay-create');
+    if (createBtn) createBtn.addEventListener('click', doSetup);
+    const setupPwdEl = $('#overlay-setup-pwd');
+    if (setupPwdEl) setupPwdEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSetup(); });
+    const cancelBtn = $('#overlay-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
+    const backdrop = $('#overlay-backdrop');
+    if (backdrop) backdrop.addEventListener('click', (e) => {
+      if (e.target.id === 'overlay-backdrop') hideOverlay();
+    });
   }
 }
 
@@ -1133,14 +1198,6 @@ document.addEventListener('DOMContentLoaded', () => {
         location.hash = '#/unlock';
       }
     });
-  });
-  $('#overlay-unlock').addEventListener('click', doUnlock);
-  $('#overlay-cancel').addEventListener('click', hideOverlay);
-  $('#overlay-backdrop').addEventListener('click', (e) => {
-    if (e.target.id === 'overlay-backdrop') hideOverlay();
-  });
-  $('#overlay-password').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doUnlock();
   });
   window.addEventListener('hashchange', onHashChange);
   init();
