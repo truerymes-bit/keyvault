@@ -813,7 +813,7 @@ async function renderImport() {
 
 }
   async function showView(view) {
-  state.view = 'unlock';
+  state.view = view;
   const content = $('#view-root');
   content.innerHTML = '';
   if (!state.unlocked) {
@@ -822,14 +822,28 @@ async function renderImport() {
     return;
   }
   isActive(view);
-  content.innerHTML = `<div class="view">${placeholderView(view)}</div>`;
   if (view === 'dashboard') {
     await renderDashboard();
   } else if (view === 'keys') {
     await renderKeys();
   } else if (view === 'add-key') {
     await renderAddKey();
+  } else if (view === 'providers') {
+    await renderProviders();
+  } else if (view === 'import') {
+    await renderImport();
+  } else {
+    content.innerHTML = `<div class="view">${placeholderView(view)}</div>`;
   }
+}
+
+function onHashChange() {
+  const view = currentView().replace('/setup', 'setup').replace('/unlock', 'unlock');
+  if (state.unlocked && (view === 'setup' || view === 'unlock')) {
+    location.hash = '#/dashboard';
+    return;
+  }
+  showView(view);
 }
 
 function placeholderView(view) {
