@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  keyvault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: keyvault:latest
+    # amendment 13: publish only loopback on the host. The container binds
+    # 0.0.0.0:8080 internally (set via CMD in the Dockerfile), so other
+    # containers on the Docker network **cannot** reach the app.
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Persistent database storage: the SQLite file survives container recreation.
+    volumes:
+      - data:/data
+    # Environment variables for configuration
+    environment:
+      - KEYVAULT_ADDR=0.0.0.0:8080
+      - KEYVAULT_DATA_DIR=/data
+      - KEYVAULT_SESSION_TIMEOUT=15m
+
+volumes:
+  data:
+    driver: local

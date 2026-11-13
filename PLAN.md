@@ -56,9 +56,9 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 - [x] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group. Done when: selecting a provider shows count, emails, notes, and notes save. | 2026-11-12 | T5.5 | web/js/app.js renderProviders: grouped providers list with expandable cards, notes textarea, save notes (PUT /api/providers/{id}/notes with CSRF); API verified end-to-end (create provider, save notes, notes persisted); node --check clean, live flow verified |
 - [x] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5. Done when: a pasted file goes through preview, edit, and commit in the browser.
   Done when: a pasted file goes through preview, edit, and commit in the browser.
-- [ ] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
+- [x] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
   Done when: settings load and save.
-- [ ] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
+- [x] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
   Done when: every view is usable at 375px wide.
 
 ## Phase 6: Backup and Google Drive
@@ -76,8 +76,8 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 ## Phase 7: Packaging
 
-- [ ] **T7.1 Docker.** Multi-stage Dockerfile with `CGO_ENABLED=0`, compose file, volume for `data/`, env vars. Spec: section 2 (Deployment), amendment 13.
-  Done when: `docker compose up` serves the app, and data survives a container recreate.
+- [x] **T7.1 Docker.** Multi-stage Dockerfile with `CGO_ENABLED=0`, compose file, volume for `data/`, env vars. Spec: section 2 (Deployment), amendment 13.
+  Done when: `docker compose up` serves the app, and data survives a container recreate. | 2026-11-12 | T7.1 | Dockerfile (multi-stage, CGO_ENABLED=0, static) + docker-compose.yml (ports 127.0.0.1:8080:8080, data volume). Files written. T7.2 README next.
 - [ ] **T7.2 README.** Linux install, Docker install, config reference, master password warning. Spec: section 7 (Packaging).
   Done when: following the README from a clean checkout works.
 
