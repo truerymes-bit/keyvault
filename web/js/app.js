@@ -276,9 +276,13 @@ async function renderKeys() {
       const act = btn.dataset.act;
       if (act === 'reveal') openRevealModal(id);
       else if (act === 'copy') {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(row.dataset.key).then(() => toast('Copied')).catch(() => toast('Copy failed'));
-        }
+        api('/api/keys/' + id + '/reveal', { method: 'POST' })
+          .then((data) => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(data.key).then(() => toast('Copied')).catch(() => toast('Copy failed'));
+            }
+          })
+          .catch(() => toast('Copy failed'));
       } else if (act === 'edit') openEditModal(id);
       else if (act === 'delete') {
         if (confirm(`Delete key for ${row.dataset.email}?`)) {
@@ -440,10 +444,29 @@ async function renderProviders() {
   }
 }
 
+let revealEscHandler = null;
+let revealBackdropHandler = null;
+
+// Fallback for document.execCommand('copy') when Clipboard API is restricted
+function copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+}
+
 function openRevealModal(id) {
-  api('/api/keys/' + id + '/reveal', { method: 'POST' }, { 'X-CSRF-Token': state.csrf })
+  api('/api/keys/' + id + '/reveal', { method: 'POST' })
     .then((data) => {
       const overlay = $('#overlay-backdrop');
+      // Clear any previous reveal session (modal opened twice).
+      if (revealEscHandler) { document.removeEventListener('keydown', revealEscHandler); revealEscHandler = null; }
+      if (revealBackdropHandler) { overlay.removeEventListener('click', revealBackdropHandler); revealBackdropHandler = null; }
       overlay.hidden = false;
       $('#overlay-title').textContent = 'Revealed key';
       $('#overlay-sub').textContent = 'The key is shown for you and your eyes only. Never share it.';
@@ -453,26 +476,54 @@ function openRevealModal(id) {
       footer.className = 'footer';
       const copy = document.createElement('button');
       copy.className = 'btn primary';
+      copy.id = 'reveal-copy-btn';
       copy.textContent = 'Copy';
       copy.addEventListener('click', () => {
-        navigator.clipboard.writeText(data.key).then(() => {
-          toast('Copied to clipboard');
+        const doCopy = () => {
           closeReveal();
-        }).catch(() => toast('Copy failed'));
+          toast('Copied to clipboard');
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(data.key).then(doCopy).catch(() => {
+            // Fallback for environments where writeText fails
+            copyFallback(data.key);
+            doCopy();
+          });
+        } else {
+          copyFallback(data.key);
+          doCopy();
+        }
       });
       const close = document.createElement('button');
       close.className = 'btn';
+      close.id = 'reveal-close-btn';
       close.textContent = 'Close';
       close.addEventListener('click', closeReveal);
       footer.appendChild(copy);
       footer.appendChild(close);
-      $('#overlay-row').innerHTML = `<div class="key-field"><code>${code.textContent}</code></div><div class="footer">${footer.innerHTML}</div>`;
+      const row = $('#overlay-row');
+      row.innerHTML = '';
+      const keyBox = document.createElement('div');
+      keyBox.className = 'key-field';
+      keyBox.appendChild(code);
+      row.appendChild(keyBox);
+      row.appendChild(footer);
+      // Close: button, Escape, backdrop click. Clears the key from the DOM.
+      revealEscHandler = (e) => { if (e.key === 'Escape') closeReveal(); };
+      revealBackdropHandler = (e) => { if (e.target === overlay) closeReveal(); };
+      document.addEventListener('keydown', revealEscHandler);
+      overlay.addEventListener('click', revealBackdropHandler);
+      copy.focus();
     })
     .catch((err) => toast(err.message, 'error'));
 }
 
 function closeReveal() {
-  $('#overlay-backdrop').hidden = true;
+  const overlay = $('#overlay-backdrop');
+  overlay.hidden = true;
+  $('#overlay-row').innerHTML = '';
+  if (revealEscHandler) { document.removeEventListener('keydown', revealEscHandler); revealEscHandler = null; }
+  if (revealBackdropHandler) { overlay.removeEventListener('click', revealBackdropHandler); revealBackdropHandler = null; }
 }
 
 async function openEditModal(id) {

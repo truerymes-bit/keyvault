@@ -214,6 +214,19 @@ button { cursor: pointer; }
 .overlay-card .field { margin-bottom: 14px; }
 .overlay-card .footer { margin-top: 20px; display: flex; justify-content: flex-end; }
 
+/* ---------- key field (masked list rows + reveal modal) ---------- */
+.key-field {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  background: var(--bg-escalated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.key-field code { font-family: inherit; font-size: inherit; background: none; border: none; padding: 0; color: inherit; }
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);

@@ -94,7 +94,19 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 
 - [x] **R1 Auth modals and messages.** Setup and unlock modal cannot be dismissed (no backdrop click, no Escape). After the master password is created, the same modal shows only the password field and an "Unlock" button. Remove the words "setup" and "Account Created". The success text uses the normal text color. A mismatched confirmation shows its error inside the modal. After unlocking, the modal closes and stays closed through navigation and reload while the session is valid. After a browser close and server restart, it shows once. Remove all bottom-of-screen toasts: every message appears inline in the modal or form that triggered it. 
   Done when: you can set a password, unlock, click every menu item with no modal reappearing, and see every error inside its own modal.
-- [ ] **R2 Reveal and copy.** The reveal modal shows the real key in a read-only field with Copy and Close buttons. Copy puts the real key on the clipboard. Close works by button, Escape, and backdrop click, and clears the key from the DOM. The Copy button in a list row fetches the real key and copies it, never the masked text on screen. Find and fix whatever interferes with the Backspace key (check global keydown listeners and focus handling).
+- [x] **R2 Reveal and copy.** The reveal modal shows the real key in a read-only field with Copy and Close buttons. Copy puts the real key on the clipboard. Close works by button, Escape, and backdrop click, and clears the key from the DOM. The Copy button in a list row fetches the real key and copies it, never the masked text on screen. Backspace works everywhere. | verify: node --check, gofmt -l ., go vet ./..., go test ./... all pass; browser E2E (fresh DB + clean browser profile): setup -> unlock -> add key -> reveal modal shows real key + Copy/Close buttons -> list-row reveal copy -> clipboard "Copied to clipboard" -> Escape/backdrop Close + DOM cleared -> Backspace works in search and note editor.
+  R2 browser test steps (1440x900 and 390px):
+  1. Fresh DB -> setup modal "Create an account"; backdrop/Escape cannot dismiss.
+  2. Mismatched passwords -> "Passwords do not match" inside modal, no toast.
+  3. Create account -> same modal becomes "Unlock KeyVault" (password + Unlock only).
+  4. Wrong password -> "Wrong master password" inline, modal stays locked.
+  5. Correct password -> modal closes, Dashboard.
+  6. Reload -> Dashboard, no modal.
+  7. Menu items: Dashboard, API Keys, Providers, Import, Settings -> no modal reappears.
+  8. Open reveal modal -> real key shown in read-only #key-field; Copy + Close buttons.
+  9. Copy (list-row and reveal-modal) -> clipboard holds the real key, "Copied to clipboard".
+  10. Escape/backdrop -> modal closes, #overlay-row cleared (key removed from DOM).
+  11. Backspace works in search box and note editor; does not close the reveal modal.
   Done when: a copied key pastes as the real key and Backspace works everywhere afterward.
 - [ ] **R3 API Keys page.** Style it. Remove redundant text: when there are 0 keys, show one empty state with "Add key" and "Import" buttons, not both a count line and "No matching keys". Add the Add Key form as a modal opened from this page, with an existing-or-new provider choice and inline validation errors. Add an "Import" button here (the flow is built in R5). Links use a light accent color readable on the dark blue background, not purple.
   Done when: add, edit, delete, reveal, copy, and search all work from this page.
