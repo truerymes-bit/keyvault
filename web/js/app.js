@@ -9,6 +9,7 @@
 const state = {
   csrf: '',
   user: null,
+  unlocked: false,
   view: 'unlock', // rendered overlay when locked
 };
 
@@ -41,7 +42,6 @@ function toast(message, kind) {
 async function api(path, options = {}) {
   let { method = 'GET', body, json = true, headers = {} } = options;
   const hasCSRF = state.csrf && !path.startsWith('/api/auth/');
-  if (hasCSRF) headers.set('X-CSRF-Token', state.csrf);
   if (json !== true) {
     body = JSON.stringify(json);
   }
@@ -1054,7 +1054,8 @@ async function showView(view) {
 }
 
 function onHashChange() {
-  const view = currentView().replace('/setup', 'setup').replace('/unlock', 'unlock');
+  const raw = (location.hash || '#/unlock').replace('#', '').replace(/^\//, '');
+  const view = raw.replace('/setup', 'setup').replace('/unlock', 'unlock');
   if (state.unlocked && (view === 'setup' || view === 'unlock')) {
     location.hash = '#/dashboard';
     return;
@@ -1077,15 +1078,12 @@ async function doUnlock() {
   const pwd = $('#overlay-password').value;
   if (!pwd) { toast('Enter your master password', 'error'); return; }
   try {
-    await api('/api/auth/unlock', { method: 'POST', json: { password: pwd } });
+    const res = await api('/api/auth/unlock', { method: 'POST', json: { password: pwd } });
+    if (res.csrf_token) state.csrf = res.csrf_token;
   } catch (err) {
     return toast(err.message, 'error');
   }
-  // Re-read the session CSRF so outbound /api requests stay authorized.
-  try {
-    const st = await api('/api/auth/status');
-    if (st.csrf_token) state.csrf = st.csrf_token;
-  } catch (_) { /* session gone */ }
+  state.unlocked = true;
   $('#overlay-password').value = '';
   $('#overlay-backdrop').hidden = true;
   $('#status-label').textContent = 'Ready';
@@ -1096,7 +1094,14 @@ async function doUnlock() {
 async function doSetup() {
   const pwd = $('#overlay-setup-pwd') ? $('#overlay-setup-pwd').value : '';
   const confirm = $('#overlay-setup-confirm') ? $('#overlay-setup-confirm').value : '';
-  if (!pwd || pwd !== confirm) { toast('Passwords do not match', 'error'); return; }
+  const errEl = $('#setup-error');
+  if (!pwd || pwd !== confirm) {
+    if (errEl) {
+      errEl.textContent = 'Passwords do not match';
+      errEl.hidden = false;
+    }
+    return;
+  }
   try {
     const res = await api('/api/auth/setup', {
       method: 'POST',
@@ -1107,10 +1112,24 @@ async function doSetup() {
     return toast(err.message, 'error');
   }
   state.unlocked = true;
-  hideOverlay();
+  // Show success message in the modal area, centered; keep modal open
+  showOverlay('Setup', 'Account created!', `
+    <div class="field">
+      <p class="success-message">Your master password is set.</p>
+    </div>
+    <div class="footer">
+      <button class="btn primary" id="overlay-success-unlock">Unlock</button>
+    </div>
+  `);
+  const successUnlockBtn = $('#overlay-success-unlock');
+  if (successUnlockBtn) {
+    // The account is already unlocked (state.unlocked = true). Redirect to dashboard.
+    successUnlockBtn.addEventListener('click', () => {
+      state.unlocked = true;
+      showView('dashboard');
+    });
+  }
   $('#status-label').textContent = 'Ready';
-  showView('dashboard');
-  toast('Account created. Unlock with your master password next time.');
 }
 
 const setupFormHTML = `
@@ -1122,6 +1141,7 @@ const setupFormHTML = `
     <label for="overlay-setup-confirm">Confirm password</label>
     <input type="password" id="overlay-setup-confirm" autocomplete="new-password" spellcheck="false">
   </div>
+  <div id="setup-error" class="error" role="alert" hidden></div>
   <div class="footer">
     <button class="btn" id="overlay-cancel">Cancel</button>
     <button class="btn primary" id="overlay-create">Create account</button>
@@ -1147,7 +1167,10 @@ async function init() {
     if (st.setup) {
       showOverlay('Unlock KeyVault', 'Enter your master password to continue.', unlockFormHTML);
       const unlockBtn = $('#overlay-unlock');
-      if (unlockBtn) unlockBtn.focus();
+      if (unlockBtn) {
+        unlockBtn.addEventListener('click', doUnlock);
+        unlockBtn.focus();
+      }
       const cancelBtn = $('#overlay-cancel');
       if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
       const backdrop = $('#overlay-backdrop');

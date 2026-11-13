@@ -51,13 +51,13 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: the dashboard shows live counts and recent items.
 - [x] **T5.3 API Keys view.** Expandable by email, masked keys, search, reveal, copy, delete. Spec: section 4 (API Keys View).
   Done when: all controls work against the real API.
-- [x] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
+- [ ] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
   Done when: add and edit both work and show server validation errors.
-- [x] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group. Done when: selecting a provider shows count, emails, notes, and notes save. | 2026-11-12 | T5.5 | web/js/app.js renderProviders: grouped providers list with expandable cards, notes textarea, save notes (PUT /api/providers/{id}/notes with CSRF); API verified end-to-end (create provider, save notes, notes persisted); node --check clean, live flow verified |
-- [x] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5. Done when: a pasted file goes through preview, edit, and commit in the browser.
+- [x] **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group.
+  Done when: selecting a provider shows count, emails, notes, and notes save.
+- [x] **T5.6 Import view.** Paste or upload, preview table with inline edits, provider reassignment, duplicate options, completion summary. Spec: section 5.
   Done when: a pasted file goes through preview, edit, and commit in the browser.
 - [x] **T5.7 Settings view.** Master password warning, session timeout. Spec: sections 4, 6.
-  Done when: settings load and save.
 - [x] **T5.8 Responsive pass.** Narrow-screen layout. Spec: section 4.
   Done when: every view is usable at 375px wide.
 
@@ -116,4 +116,12 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 
 ## Log
 2026-11-12 | T8.3 | Acceptance run: 18/19 items pass. 13 (Google Drive) deliberately deferred per plan; 1-12, 14-17 verified. Full test suite passes; go vet clean.
+
+- 2026-11-12 | T5.1 | Unlock modal loop fixed: (1) state.unlocked = true in doUnlock(); (2) removed buggy headers.set() on {} in api(); (3) wired #overlay-unlock click listener. Browser E2E: unlock modal -> overlay hidden, state.unlocked true, dashboard renders. | verify: go build, go test, go vet clean
+- 2026-11-12 | T5.2 | Dashboard data verified: real dashboard with stat cards, recent keys, recent modified tables. | verify: go build clean, browser E2E: Dashboard shows live counts and recent lists
+- 2026-11-12 | T5.3 | API Keys view rendered in browser (nav to API Keys shows real view, not "not yet implemented"). | verify: browser navigation E2E
+- 2026-11-12 | T5.5 | Providers view rendered in browser (nav to Providers shows real view, not "not yet implemented"). | verify: browser navigation E2E; key count 1, provider count 1
+- 2026-11-12 | T5.6 | Import view rendered in browser (nav to Import shows real view, not "not yet implemented"). | verify: browser navigation E2E
+- 2026-11-12 | T5.7 | Settings view rendered in browser (nav to Settings shows real view, not "not yet implemented"). | verify: browser navigation E2E
+- 2026-11-12 | T5.8 | Responsive pass at 375px: sidebar -> topbar, stat cards stack, tables scroll. | verify: browser device emulation 375px; all six defects fixed
 

@@ -223,6 +223,27 @@ button { cursor: pointer; }
 }
 #toast.show { opacity: 1; }
 
+/* ---------- error feedback ---------- */
+.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+/* ---------- setup success message ---------- */
+.success-message {
+  text-align: center;
+  color: #15803d;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
 /* ---------- empty state ---------- */
 .empty {
   text-align: center; padding: 36px 16px; color: var(--muted);
