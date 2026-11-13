@@ -897,6 +897,30 @@ async function renderImport() {
   }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+  const toggle = $('#sidebar-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const sidebar = $('#sidebar');
+      if (!sidebar) return;
+      const isHidden = sidebar.style.width === '0px' || sidebar.style.width === '0';
+      if (isHidden) {
+        sidebar.style.width = '230px';
+        sidebar.style.opacity = '1';
+        sidebar.style.overflow = 'auto';
+        sidebar.style.pointerEvents = 'auto';
+        toggle.textContent = '—';
+      } else {
+        sidebar.style.width = '0px';
+        sidebar.style.opacity = '0';
+        sidebar.style.overflow = 'hidden';
+        sidebar.style.pointerEvents = 'none';
+        toggle.textContent = '☰';
+      }
+    });
+  }
+});
+
 async function showView(view) {
   state.view = view;
   const content = $('#view-root');

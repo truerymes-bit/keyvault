@@ -170,6 +170,35 @@ button { cursor: pointer; }
 .plain-list li { margin-bottom: 6px; }
 .plain-list code { background: var(--bg-escalated); border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 6px; font-size: 11.5px; color: var(--muted); }
 
+/* ---------- responsive ---------- */
+@media (max-width: 640px) {
+  #sidebar {
+    width: 0 !important;
+    opacity: 0 !important;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #main { margin-left: 0 !important; }
+  #layout { height: 100vh; }
+  #content { padding: 16px 18px 30px; }
+  #topbar .status { display: none; }
+  #sidebar-toggle { display: inline-block !important; }
+  .stat-card { flex: 1 1 100% !important; }
+  .panel-grid { grid-template-columns: 1fr !important; }
+  .view h1 { font-size: 20px; }
+  .view h2 { font-size: 14px; }
+  .panel { padding: 12px; }
+  .plain-list { padding-left: 14px; }
+  #view-root { display: flex; flex-direction: column; gap: 14px; }
+  input[type="text"], input[type="password"], input[type="email"], input[type="number"], select, textarea {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 641px) {
+  #sidebar-toggle { display: none !important; }
+}
+
 /* ---------- locked / setup overlays ---------- */
 .overlay-backdrop { display: none; }
 .overlay-backdrop:not([hidden]) {
