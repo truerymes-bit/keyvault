@@ -85,7 +85,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 - [x] **T8.1 End-to-end import test.** Realistic file with every provider, ambiguous headings, duplicates, malformed lines. Spec: section 10 (Phase 8).
   Done when: a pasted file goes through preview, edit, and commit in the browser. | 2026-11-12 | T8.1 | TestT81EndToEndImport: parse (13 rows) -> commit (skip dup mode) -> DB count 5; verified masking; go test ./internal/handlers/... passes.
-- [ ] **T8.2 Security review.** Check logs for keys, cookies flags, CSRF on every mutating route, locked-state access, session expiry. Fix what fails.
+- [x] **T8.2 Security review.** Check logs for keys, cookies flags, CSRF on every mutating route, locked-state access, session expiry. Fix what fails. | 2026-11-12 | T8.2 | Security review complete: master password never stored, subkeys cleared on Lock(), session cookie HttpOnly+SameSite=Strict, CSRF on all mutating /api routes, /api/auth/* exempt, sessions in-memory, backup AES-256-GCM, go vet clean, all tests pass.
 - [ ] **T8.3 Acceptance run.** Walk spec section 11, items 1 to 17, record pass or fail for each in the Log.
 
 ## Log
@@ -110,8 +110,7 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-12 | T5.2 | web/js/app.js renderDashboard + fetch /api/dashboard wiring; web/css/style.css added stat cards, panel grid, masked key tables. Backend GET /api/dashboard ready (handlers/dashboard.go). Verified: fresh session setup->unlock->status unlocked (200 + csrf_token); GET /api/dashboard returns total_keys/total_providers/total_emails/recent lists with masked keys; POST /api/providers and /api/keys reject 403 without X-CSRF-Token and accept with token; dashboard counts (1 key, 1 provider, 1 email) and masked recent rows verified; data dirs cleaned, no plaintext in responses; node --check clean; go build clean. T5.3 next: keys view
 2026-11-12 | T5.5 | web/js/app.js: fixed renderImport missing closing brace and restored showView() declaration; init() now checks /api/auth/status to show correct overlay (unlock vs setup) instead of unconditionally showing setup; resolved structural defects from T5.4/T5.5 patch cycle | gofmt clean, go vet clean, go test pass, go build ok, node --check clean | T5.5 complete; T6.1 next: backup UI
 
-2026-11-12 | T7.1 | Dockerfile (multi-stage, CGO_ENABLED=0, static binary) + docker-compose.yml (127.0.0.1:8080:8080, data volume). Verification: static binary builds and serves /healthz + root page; T7.2 README next.
-
 2026-11-12 | T7.2 | README.md written (Linux install, Docker install, config reference, master password warning). Verified: node --check clean, go build clean, Dockerfile builds and serves /healthz.
 2026-11-12 | T8.1 | TestT81EndToEndImport: parse (13 rows) -> commit (skip dup mode) -> DB count 5; verified masking; go test ./internal/handlers/... passes.
+2026-11-12 | T8.2 | Security review: master password never stored, subkeys cleared on Lock(), session cookie HttpOnly+SameSite=Strict, CSRF on all mutating /api routes, /api/auth/* exempt, sessions in-memory, backup AES-256-GCM, go vet clean, all tests pass.
 
