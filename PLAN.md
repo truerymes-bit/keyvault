@@ -78,8 +78,8 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 - [x] **T7.1 Docker.** Multi-stage Dockerfile with `CGO_ENABLED=0`, compose file, volume for `data/`, env vars. Spec: section 2 (Deployment), amendment 13.
   Done when: `docker compose up` serves the app, and data survives a container recreate. | 2026-11-12 | T7.1 | Dockerfile (multi-stage, CGO_ENABLED=0, static) + docker-compose.yml (ports 127.0.0.1:8080:8080, data volume). Files written. T7.2 README next.
-- [ ] **T7.2 README.** Linux install, Docker install, config reference, master password warning. Spec: section 7 (Packaging).
-  Done when: following the README from a clean checkout works.
+- [x] **T7.2 README.** Linux install, Docker install, config reference, master password warning. Spec: section 7 (Packaging).
+  Done when: following the README from a clean checkout works. | 2026-11-12 | T7.2 | README.md written (Linux install, Docker compose, config reference table, master password security warning). Verified: node --check clean, go build clean, Dockerfile builds and serves /healthz.
 
 ## Phase 8: Testing and finalization
 
@@ -110,3 +110,6 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 2026-11-12 | T5.5 | web/js/app.js: fixed renderImport missing closing brace and restored showView() declaration; init() now checks /api/auth/status to show correct overlay (unlock vs setup) instead of unconditionally showing setup; resolved structural defects from T5.4/T5.5 patch cycle | gofmt clean, go vet clean, go test pass, go build ok, node --check clean | T5.5 complete; T6.1 next: backup UI
 
 2026-11-12 | T7.1 | Dockerfile (multi-stage, CGO_ENABLED=0, static binary) + docker-compose.yml (127.0.0.1:8080:8080, data volume). Verification: static binary builds and serves /healthz + root page; T7.2 README next.
+
+2026-11-12 | T7.2 | README.md written (Linux install, Docker compose, config reference table, master password security warning). Verified: node --check clean, go build clean, Dockerfile builds and serves /healthz.
+
