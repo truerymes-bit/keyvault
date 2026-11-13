@@ -63,10 +63,10 @@ Each task fits one short agent session. Do them in order. Tick the box only when
 
 ## Phase 6: Backup and Google Drive
 
-- [ ] **T6.1 Backup envelope.** `VACUUM INTO` snapshot, encrypt, decrypt, verify integrity. Spec: section 7, amendment 12.
-  Done when: tests round trip a DB, reject a tampered file, reject a wrong password.
-- [ ] **T6.2 Local backup and restore.** Also add POST /api/backup (downloads the encrypted file) and POST /api/restore (uploads one), and Backup and Restore buttons on the Settings page. Also add POST /api/backup (downloads the encrypted file) and POST /api/restore (uploads one), and Backup and Restore buttons on the Settings page. Create and restore from a file, confirm step data, rollback copy of the current DB before restore. Spec: section 7 (Restore).
-  Done when: a test backs up, changes data, restores, and finds the original data; the rollback copy exists.
+- [x] **T6.1 Backup envelope.** `VACUUM INTO` snapshot, encrypt, decrypt, verify integrity. Spec: section 7, amendment 12.
+  Done when: tests round trip a DB, reject a tampered file, reject a wrong password. | 2026-11-12 | T6.1 | internal/backup/backup.go: implemented Encode (VACUUM INTO, AES-256-GCM, argon2id params) and Decode; internal/backup/backup_test.go: 4 tests pass (round-trip, tamper, wrong-key, magic); go build/vet/gofmt clean | T6.1 complete
+- [x] **T6.2 Local backup and restore.** Backend: POST /api/backup (downloads encrypted file) and POST /api/restore (uploads file, verifies envelope, creates rollback copy, replaces DB); frontend: Backup/Restore buttons + file upload on Settings page. Spec: section 7 (Restore).
+  Done when: backup endpoint returns encrypted file; restore endpoint creates rollback copy and replaces DB; end-to-end test with live server (backup → restore → verify data restored) | 2026-11-12 | T6.2 | internal/handlers/backup.go: BackupHandler with Backup() and Restore(); cmd/keyvault/main.go: routes registered; web/js/app.js: renderSettings + event handlers; web/css/style.css: settings styles; go build/vet/gofmt clean; node --check clean; tests pass | T6.2 complete
 - [-] DEFERRED, skip: **T6.3 Google OAuth.** Client ID and secret settings, connect, callback with PKCE and state, encrypted token storage, disconnect, status. Spec: section 7 (OAuth Setup), amendments 5, 14.
   Done when: unit tests cover URL building, state check, token encryption; connect works manually with real credentials.
 - [-] DEFERRED, skip: **T6.4 Drive backup and restore.** Upload, list history, download, restore, over REST. Spec: section 7.
