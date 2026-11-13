@@ -108,7 +108,7 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
   10. Escape/backdrop -> modal closes, #overlay-row cleared (key removed from DOM).
   11. Backspace works in search box and note editor; does not close the reveal modal.
   Done when: a copied key pastes as the real key and Backspace works everywhere afterward.
-- [ ] **R3 API Keys page.** Style it. Remove redundant text: when there are 0 keys, show one empty state with "Add key" and "Import" buttons, not both a count line and "No matching keys". Add the Add Key form as a modal opened from this page, with an existing-or-new provider choice and inline validation errors. Add an "Import" button here (the flow is built in R5). Links use a light accent color readable on the dark blue background, not purple.
+- [x] **R3 API Keys page.** Style it. Remove redundant text: when there are 0 keys, show one empty state with "Add key" and "Import" buttons, not both a count line and "No matching keys". Add the Add Key form as a modal opened from this page, with an existing-or-new provider choice and inline validation errors. Add an "Import" button here (the flow is built in R5). Links use a light accent color readable on the dark blue background, not purple.
   Done when: add, edit, delete, reveal, copy, and search all work from this page.
 - [ ] **R4 Provider recognition in the parser.** Currently only 2 of the user's 5 provider headings are recognized, so 16 records are flagged. A line with no email that looks like a heading is a candidate provider: group the records under it and return it as a "new provider detected" item the user confirms with one click, not as unmatched lines. Known names still match case-insensitively with trailing words ("Gemini API Key"). Fix the "rows not iterable" error when parsing a second time. Parse state resets on cancel and after import. Test with a 5-provider file where 3 headings are not in the built-in list.
   Done when: go tests pass, and the user's file imports with all records assigned to a provider.
@@ -178,3 +178,4 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
   7. Click Dashboard, API Keys, Providers, Import, Settings -> no modal reappears.
   8. Restart the server and reload -> unlock modal shows once; unlock -> Dashboard.
 
+- 2026-11-13 | R3 | API Keys page styled, toolbar Add/Import wired, Add Key modal with inline validation implemented, CSS dark theme full rewrite. | go test/build/node --check pass | next: R4 (Provider recognition)

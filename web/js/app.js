@@ -170,6 +170,114 @@ const groupByEmail = (items) => {
   }));
 };
 
+const addKeyFormHTML = `
+  <div class="field">
+    <label for="ak-email">Email address</label>
+    <input id="ak-email" type="email" spellcheck="false" placeholder="you@example.com" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="ak-provider">Provider</label>
+    <select id="ak-provider" autocomplete="off">
+      <option value="">Choose a provider…</option>
+    </select>
+  </div>
+  <div class="field">
+    <label class="checkbox">
+      <input id="ak-new-provider" type="checkbox">
+      Create a new provider
+    </label>
+    <input id="ak-new-provider-name" type="text" placeholder="New provider name" style="margin-top:6px;" disabled autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="ak-key">API key</label>
+    <input id="ak-key" type="password" autocomplete="off" placeholder="••••••••">
+  </div>
+  <div class="field">
+    <label for="ak-label">Description (optional)</label>
+    <input id="ak-label" type="text" placeholder="e.g. production, sandbox" autocomplete="off">
+  </div>
+  <div id="add-key-msg" class="empty"></div>
+  <div class="footer" style="justify-content:flex-end;">
+    <button class="btn" id="ak-cancel">Cancel</button>
+    <button class="btn primary" id="ak-save">Save Key</button>
+  </div>
+`.trim();
+
+function closeAddKeyModal() {
+  $('#overlay-backdrop').hidden = true;
+  $('#overlay-row').innerHTML = '';
+}
+
+async function openAddKeyModal() {
+  showOverlay('Add key', 'Choose an existing provider or create a new one.', addKeyFormHTML);
+  const email = document.getElementById('ak-email');
+  if (email) email.focus();
+  const select = document.getElementById('ak-provider');
+  if (select) {
+    try {
+      const providers = await api('/api/providers');
+      select.innerHTML = '<option value="">Choose a provider…</option>';
+      for (const p of providers) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        select.appendChild(opt);
+      }
+    } catch (err) {
+      select.innerHTML = '<option value="">Choose a provider…</option>';
+    }
+  }
+  const cancel = document.getElementById('ak-cancel');
+  const newProviderCheck = document.getElementById('ak-new-provider');
+  const newProviderName = document.getElementById('ak-new-provider-name');
+  const save = document.getElementById('ak-save');
+  const msgBox = document.getElementById('add-key-msg');
+  if (cancel) cancel.addEventListener('click', closeAddKeyModal);
+  if (newProviderCheck) {
+    newProviderCheck.addEventListener('change', () => {
+      newProviderName.disabled = !newProviderCheck.checked;
+    });
+  }
+  if (save) {
+    save.addEventListener('click', async () => {
+      const email = (document.getElementById('ak-email')?.value || '').trim();
+      const providerID = document.getElementById('ak-provider')?.value || '';
+      const newProvider = document.getElementById('ak-new-provider')?.checked || false;
+      const newProviderName = (document.getElementById('ak-new-provider-name')?.value || '').trim();
+      const key = (document.getElementById('ak-key')?.value || '');
+      const label = (document.getElementById('ak-label')?.value || '').trim();
+      msgBox.textContent = '';
+      msgBox.className = 'empty';
+
+      const errors = [];
+      if (!emailRE.test(email)) errors.push('invalid email address');
+      if (!key) errors.push('key must not be empty');
+      if (!providerID && !newProvider) errors.push('select an existing provider or create a new one');
+      if (newProvider && !newProviderName) errors.push('enter a name for the new provider');
+      if (errors.length) {
+        msgBox.textContent = errors.join(' · ');
+        msgBox.style.color = 'var(--danger)';
+        return;
+      }
+      msgBox.textContent = '';
+      msgBox.style.color = 'var(--text)';
+      try {
+        let providerIDNumber = Number(providerID);
+        if (newProvider) {
+          const created = await api('/api/providers', { method: 'POST', json: { name: newProviderName } }, { 'X-CSRF-Token': state.csrf });
+          providerIDNumber = created.id;
+        }
+        await api('/api/keys', { method: 'POST', json: { email, provider_id: providerIDNumber, key, label } }, { 'X-CSRF-Token': state.csrf });
+        closeAddKeyModal();
+        renderKeys();
+      } catch (err) {
+        msgBox.textContent = err.message;
+        msgBox.style.color = 'var(--danger)';
+      }
+    });
+  }
+}
+
 async function renderKeys() {
   const root = $('#view-root');
   root.innerHTML = `
@@ -180,7 +288,16 @@ async function renderKeys() {
         <input id="key-search" placeholder="Search email, provider or label…" autocomplete="off">
         <span id="key-search-count" class="small"></span>
       </div>
+      <div class="btn-row" style="justify-content:flex-end;">
+        <button class="btn" id="keys-add-key">Add key</button>
+        <a class="btn primary" id="keys-import" href="#/import">Import</a>
+      </div>
     </div>`;
+
+  const addKeyBtn = document.getElementById('keys-add-key');
+  const importBtn = document.getElementById('keys-import');
+  if (addKeyBtn) addKeyBtn.addEventListener('click', openAddKeyModal);
+  if (importBtn) importBtn.addEventListener('click', () => { location.hash = '#/import'; });
 
   const searchInput = $('#key-search');
   const countEl = $('#key-search-count');
@@ -211,9 +328,31 @@ async function renderKeys() {
     const resp = await api('/api/keys');
     if (resp.error) throw new Error(resp.error);
     const groups = groupByEmail(resp);
+    const total = groups.reduce((n, g) => n + g.keys.length, 0);
+    if (total === 0) {
+      root.innerHTML = `
+        <div class="view">
+          <h1>API Keys</h1>
+          <p class="lede">No records yet. Add your first API key or import provider sections.</p>
+          <div class="empty-state">
+            <div class="icon">＋</div>
+            <h2>No records yet</h2>
+            <p class="lede">Add a key or import provider sections to get started.</p>
+            <div class="btn-row">
+              <button class="btn primary" id="empty-add-key">Add key</button>
+              <a class="btn" id="empty-import" href="#/import">Import</a>
+            </div>
+          </div>
+        </div>`;
+      const emptyAdd = document.getElementById('empty-add-key');
+      const emptyImport = document.getElementById('empty-import');
+      if (emptyAdd) emptyAdd.addEventListener('click', openAddKeyModal);
+      if (emptyImport) emptyImport.addEventListener('click', () => { location.hash = '#/import'; });
+      return;
+    }
     const summary = document.createElement('p');
     summary.className = 'small';
-    summary.textContent = `${groups.reduce((n, g) => n + g.keys.length, 0)} key${groups.reduce((n, g) => n + g.keys.length, 0) !== 1 ? 's' : ''} in ${groups.length} account${groups.length !== 1 ? 's' : ''}`;
+    summary.textContent = `${total} key${total !== 1 ? 's' : ''} in ${groups.length} account${groups.length !== 1 ? 's' : ''}`;
     root.appendChild(summary);
     root.appendChild(listEl);
 

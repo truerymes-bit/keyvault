@@ -257,6 +257,50 @@ button { cursor: pointer; }
   margin: 0 0 16px;
 }
 
+/* ---------- API Keys page ---------- */
+a { color: var(--accent); }
+.account-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; display: flex; flex-direction: column; max-width: 860px;
+}
+.account-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px;
+  background: none; border: none; cursor: pointer; text-align: left; font-size: 14px;
+}
+.account-head:hover { background: var(--panel-2); }
+.chevron { color: var(--muted); font-size: 10px; transition: transform .15s; }
+.account-body { padding: 0 16px 14px; display: none; flex-direction: column; gap: 10px; }
+.account-body.open { display: flex; }
+.account-email { font-weight: 700; }
+.count { color: var(--muted); font-size: 12px; margin-left: auto; }
+.key-row {
+  display: flex; align-items: stretch; gap: 12px; padding: 12px 16px;
+  border-top: 1px solid var(--border); background: var(--panel);
+}
+.key-row:first-child { border-top: none; }
+.key-main { flex: 1; min-width: 0; }
+.key-provider { font-weight: 600; font-size: 13.5px; }
+.key-email { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.key-meta { color: var(--muted); font-size: 11.5px; margin-top: 6px; line-height: 1.4; }
+.key-actions { display: flex; gap: 8px; flex: 0 0 150px; }
+.key-actions .btn { padding: 7px 10px; font-size: 12px; }
+.search-row { display: flex; gap: 10px; align-items: center; }
+.search-row input { flex: 1; min-width: 0; }
+.key-search-count { flex: 0 0 auto; white-space: nowrap; }
+.empty-state {
+  text-align: center; padding: 44px 20px; background: var(--panel);
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+}
+.empty-state .icon { font-size: 34px; margin-bottom: 10px; }
+.empty-state h2 { margin: 0 0 6px; color: var(--text); }
+.empty-state .lede { color: var(--muted); }
+.empty-state .btn-row { justify-content: center; margin-top: 18px; }
+@media (max-width: 640px) {
+  .key-actions { flex: 0 0 120px; }
+  .key-row { padding: 10px 12px; }
+  .account-card { max-width: 100%; }
+}
+
 /* ---------- empty state ---------- */
 .empty {
   text-align: center; padding: 36px 16px; color: var(--muted);
