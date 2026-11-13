@@ -127,7 +127,7 @@ async function renderDashboard() {
       return `<div class="panel"><h2>${escapeHtml(label)}</h2><div class="empty">Nothing yet.</div></div>`;
     }
     const rows = items.map((k) => `
-      <tr>
+      <tr class="key-row" data-id="${k.id}" style="cursor:pointer;">
         <td>${escapeHtml(k.email)}</td>
         <td>${escapeHtml(k.provider_name)}</td>
         <td><code>${escapeHtml(k.key)}</code></td>
@@ -156,6 +156,12 @@ async function renderDashboard() {
         ${table(resp.recent_modified, 'Recently modified', 'updated')}
       </div>
     </div>`;
+
+  // Allow clicking any recent key row (in either table) to reveal the key.
+  $('#view-root').addEventListener('click', (e) => {
+    const row = e.target.closest('.key-row');
+    if (row) openRevealModal(Number(row.dataset.id));
+  });
 }
 
 const groupByEmail = (items) => {
@@ -408,13 +414,14 @@ async function renderKeys() {
     render();
 
     listEl.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-act]');
-      if (!btn) return;
-      const row = btn.closest('.key-row');
+      const row = e.target.closest('.key-row');
+      if (!row) return;
       const id = Number(row.dataset.id);
-      const act = btn.dataset.act;
-      if (act === 'reveal') openRevealModal(id);
-      else if (act === 'copy') {
+      const btn = e.target.closest('button[data-act]');
+      if (btn) {
+        const act = btn.dataset.act;
+        if (act === 'reveal') openRevealModal(id);
+        else if (act === 'copy') {
         api('/api/keys/' + id + '/reveal', { method: 'POST' })
           .then((data) => {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -422,13 +429,16 @@ async function renderKeys() {
             }
           })
           .catch(() => toast('Copy failed'));
-      } else if (act === 'edit') openEditModal(id);
-      else if (act === 'delete') {
-        if (confirm(`Delete key for ${row.dataset.email}?`)) {
-          api('/api/keys/' + id, { method: 'DELETE' }, { 'X-CSRF-Token': state.csrf })
-            .then(() => { toast('Deleted'); renderKeys(); })
-            .catch((err) => toast(err.message, 'error'));
+        } else if (act === 'edit') openEditModal(id);
+        else if (act === 'delete') {
+          if (confirm(`Delete key for ${row.dataset.email}?`)) {
+            api('/api/keys/' + id, { method: 'DELETE' }, { 'X-CSRF-Token': state.csrf })
+              .then(() => { toast('Deleted'); renderKeys(); })
+              .catch((err) => toast(err.message, 'error'));
+          }
         }
+      } else {
+        openRevealModal(id);
       }
     });
   } catch (err) {
