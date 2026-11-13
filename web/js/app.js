@@ -25,6 +25,8 @@ const VIEWS = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+const emailRE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (ch) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -495,31 +497,12 @@ async function openEditModal(id) {
     }
   }
 
-  const newProviderRow = document.getElementById('new-provider-row');
-  const addNewProvider = () => {
-    const name = document.getElementById('edit-new-provider').value.trim();
-    if (!name) return;
-    api('/api/providers', { method: 'POST', json: { name } }, { 'X-CSRF-Token': state.csrf })
-      .then((p) => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name;
-        select.appendChild(opt);
-        document.getElementById('edit-new-provider').value = '';
-      })
-      .catch(() => toast('Could not create provider', 'error'));
-  };
-  document.getElementById('edit-add-provider').addEventListener('click', addNewProvider);
-  document.getElementById('edit-new-provider').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addNewProvider();
-  });
-
   const form = document.getElementById('overlay-row');
   if (!form) return;
   form.innerHTML = `
     <div class="field">
       <label for="edit-email">Email address</label>
-      <input id="edit-email" type="email" spellcheck="false" value="${escapeHtml('')}">
+      <input id="edit-email" type="email" spellcheck="false" value="">
     </div>
     <div class="field">
       <label for="edit-label">Label</label>
@@ -534,32 +517,66 @@ async function openEditModal(id) {
       <select id="edit-provider"></select>
     </div>
     <div class="field">
-      <label for="edit-new-provider">Or create a new one</label>
-      <input id="edit-new-provider" type="text" placeholder="New provider name">
-      <button class="btn" id="edit-add-provider">Add provider</button>
+      <label class="checkbox">
+        <input id="edit-new-provider" type="checkbox">
+        Create a new provider
+      </label>
+      <input id="edit-new-provider-name" type="text" placeholder="New provider name" style="margin-top:6px;" disabled>
     </div>
+    <div id="edit-msg" class="empty"></div>
     <div class="footer" style="justify-content:flex-end; margin-top:16px;">
       <button class="btn" id="edit-cancel">Cancel</button>
       <button class="btn primary" id="edit-save">Save</button>
     </div>`;
 
   document.getElementById('edit-cancel').addEventListener('click', closeEditModal);
+
+  const newProviderCheck = document.getElementById('edit-new-provider');
+  const newProviderName = document.getElementById('edit-new-provider-name');
+  newProviderCheck.addEventListener('change', () => {
+    newProviderName.disabled = !newProviderCheck.checked;
+  });
+
   document.getElementById('edit-save').addEventListener('click', async () => {
     const email = document.getElementById('edit-email').value.trim();
     const label = document.getElementById('edit-label').value.trim();
     const key = document.getElementById('edit-key').value;
     const providerID = document.getElementById('edit-provider').value;
-    if (!email || !providerID) { toast('Email and provider are required', 'error'); return; }
+    const newProvider = document.getElementById('edit-new-provider').checked;
+    const newProviderName = document.getElementById('edit-new-provider-name').value.trim();
+    const msgBox = document.getElementById('edit-msg');
+    msgBox.textContent = '';
+    msgBox.className = 'empty';
+
+    const errors = [];
+    if (!email) errors.push('email is required');
+    else if (!emailRE.test(email)) errors.push('invalid email address');
+    if (!providerID && !newProvider) errors.push('select an existing provider or create a new one');
+    if (newProvider && !newProviderName) errors.push('enter a name for the new provider');
+    if (!key) errors.push('key must not be empty');
+    if (errors.length) {
+      msgBox.textContent = errors.join(' · ');
+      msgBox.style.color = 'var(--danger)';
+      return;
+    }
+    msgBox.textContent = '';
+    msgBox.style.color = 'var(--text)';
     try {
+      let providerIDNumber = Number(providerID);
+      if (newProvider) {
+        const created = await api('/api/providers', { method: 'POST', json: { name: newProviderName } }, { 'X-CSRF-Token': state.csrf });
+        providerIDNumber = created.id;
+      }
       await api('/api/keys/' + id, {
         method: 'PUT',
-        json: { email, provider_id: Number(providerID), label, key },
+        json: { email, provider_id: providerIDNumber, label, key },
       }, { 'X-CSRF-Token': state.csrf });
-      toast('Saved');
-      closeEditModal();
-      renderKeys();
+      msgBox.textContent = 'Saved';
+      msgBox.style.color = 'var(--success)';
+      setTimeout(() => { closeEditModal(); renderKeys(); }, 900);
     } catch (err) {
-      toast(err.message, 'error');
+      msgBox.textContent = err.message;
+      msgBox.style.color = 'var(--danger)';
     }
   });
 }
@@ -1055,7 +1072,7 @@ async function showView(view) {
 
 function onHashChange() {
   const raw = (location.hash || '#/unlock').replace('#', '').replace(/^\//, '');
-  const view = raw.replace('/setup', 'setup').replace('/unlock', 'unlock');
+  const view = raw.replace('/setup', 'setup').replace('/unlock', 'unlock').replace('keys/new', 'add-key');
   if (state.unlocked && (view === 'setup' || view === 'unlock')) {
     location.hash = '#/dashboard';
     return;

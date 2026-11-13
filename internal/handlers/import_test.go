@@ -361,7 +361,6 @@ user-10@example.com sk-or-tailed
 		t.Fatalf("rows = %d, want 13", len(rows))
 	}
 
-
 	// 3) Commit the session
 	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
 	if rec.Code != http.StatusOK {

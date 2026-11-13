@@ -51,7 +51,7 @@ Each task fits one short agent session. Do them in order. Tick the box only when
   Done when: the dashboard shows live counts and recent items.
 - [-] SUPERSEDED by Phase 5R: **T5.3 API Keys view.** Expandable by email, masked keys, search, reveal, copy, delete. Spec: section 4 (API Keys View).
   Done when: all controls work against the real API.
-- [ ] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
+- [x] **T5.4 Add and edit key form.** Existing or new provider, validation messages. Spec: section 4 (Add API Key).
   Done when: add and edit both work and show server validation errors.
 - [-] SUPERSEDED by Phase 5R: **T5.5 Providers view and notes editor.** Spec: section 4 (Providers View, Notes Editor). Stays sorted in the providers group.
   Done when: selecting a provider shows count, emails, notes, and notes save.
@@ -143,4 +143,5 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-12 | T5.6 | Import view rendered in browser (nav to Import shows real view, not "not yet implemented"). | verify: browser navigation E2E
 - 2026-11-12 | T5.7 | Settings view rendered in browser (nav to Settings shows real view, not "not yet implemented"). | verify: browser navigation E2E
 - 2026-11-12 | T5.8 | Responsive pass at 375px: sidebar -> topbar, stat cards stack, tables scroll. | verify: browser device emulation 375px; all six defects fixed
+- 2026-11-13 | T5.4 | web/js/app.js: openEditModal rewritten to match the add form — added "Create a new provider" checkbox + name field, inline validation (email format, key non-empty, provider chosen), inline #edit-msg for errors and success, removed the old toast-based save handler and dead addNewProvider block. Add form already had inline validation. | verify: gofmt -l . clean, go vet ./... pass, go test ./... pass, node --check web/js/app.js pass | next: R1 (Phase 5R)
 
