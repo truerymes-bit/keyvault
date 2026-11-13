@@ -28,14 +28,21 @@ var (
 	ErrWrongPassword = errors.New("wrong master password")
 )
 
-// Auth manages the unlocked state. The zero value is ready to use but locked.
+// Auth manages the unlocked state.
 type Auth struct {
 	db      *sql.DB
 	subkeys *encryption.Subkeys
 }
 
+// NewAuth creates a new Auth instance bound to db.
 func NewAuth(db *sql.DB) *Auth {
 	return &Auth{db: db}
+}
+
+// GetDB returns the backup database connection. Package-private to limit access
+// to the backup package.
+func (a *Auth) GetDB() *sql.DB {
+	return a.db
 }
 
 // IsSetup reports whether a master password has been configured.
@@ -92,7 +99,9 @@ func (a *Auth) Setup(password string) error {
 	if err != nil {
 		return err
 	}
-	stmts := []struct{ k, v string }{
+	stmts := []struct {
+		k, v string
+	}{
 		{settingSalt, base64.StdEncoding.EncodeToString(salt)},
 		{settingTime, fmt.Sprintf("%d", encryption.ArgonTime)},
 		{settingMemory, fmt.Sprintf("%d", encryption.ArgonMemory)},

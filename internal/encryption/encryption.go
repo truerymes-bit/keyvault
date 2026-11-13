@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	// Argon2id parameters. Memory is in KiB.
 	ArgonTime    uint32 = 3
 	ArgonMemory  uint32 = 64 * 1024
 	ArgonThreads uint8  = 2
@@ -94,6 +93,11 @@ func Open(key, ciphertext, nonce []byte) ([]byte, error) {
 		return nil, errors.New("decryption failed")
 	}
 	return plaintext, nil
+}
+
+// NewGCM returns a new AES-256-GCM AEAD for the given 256-bit key.
+func NewGCM(key []byte) (cipher.AEAD, error) {
+	return gcmFor(key)
 }
 
 func gcmFor(key []byte) (cipher.AEAD, error) {
