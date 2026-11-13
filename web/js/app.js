@@ -10,6 +10,7 @@ const state = {
   csrf: '',
   user: null,
   unlocked: false,
+  setup: false, // master password configured on the server
   view: 'unlock', // rendered overlay when locked
 };
 
@@ -87,12 +88,6 @@ function showOverlay(title, sub, footer) {
   $('#overlay-backdrop').hidden = false;
   const pwd = $('#overlay-password') || $('#overlay-setup-pwd');
   if (pwd) pwd.focus();
-}
-
-function hideOverlay() {
-  $('#overlay-backdrop').hidden = true;
-  const pwd = $('#overlay-password') || $('#overlay-setup-pwd');
-  if (pwd) pwd.value = '';
 }
 
 /* ---------- view router ---------- */
@@ -1049,7 +1044,7 @@ async function showView(view) {
   content.innerHTML = '';
   if (!state.unlocked) {
     isActive(view);
-    showOverlay('Unlock KeyVault', 'Enter your master password to continue.');
+    showAuthModal();
     return;
   }
   isActive(view);
@@ -1093,60 +1088,58 @@ function placeholderView(view) {
 /* ---------- lock / setup ---------- */
 async function doUnlock() {
   const pwd = $('#overlay-password').value;
-  if (!pwd) { toast('Enter your master password', 'error'); return; }
+  const errEl = $('#unlock-error');
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  if (!pwd) { showErr('Enter your master password'); return; }
+  let res;
   try {
-    const res = await api('/api/auth/unlock', { method: 'POST', json: { password: pwd } });
-    if (res.csrf_token) state.csrf = res.csrf_token;
+    res = await api('/api/auth/unlock', { method: 'POST', json: { password: pwd } });
   } catch (err) {
-    return toast(err.message, 'error');
+    showErr(err.message);
+    return;
   }
+  // The modal closes only on a success response. A 401 comes back as
+  // { locked: true } from api(), so it must be checked explicitly.
+  if (!res || res.locked || !res.csrf_token) {
+    showErr('Wrong master password');
+    return;
+  }
+  state.csrf = res.csrf_token;
   state.unlocked = true;
   $('#overlay-password').value = '';
+  if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
   $('#overlay-backdrop').hidden = true;
   $('#status-label').textContent = 'Ready';
   showView('dashboard');
-  toast('Welcome back');
 }
 
 async function doSetup() {
   const pwd = $('#overlay-setup-pwd') ? $('#overlay-setup-pwd').value : '';
   const confirm = $('#overlay-setup-confirm') ? $('#overlay-setup-confirm').value : '';
   const errEl = $('#setup-error');
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
   if (!pwd || pwd !== confirm) {
-    if (errEl) {
-      errEl.textContent = 'Passwords do not match';
-      errEl.hidden = false;
-    }
+    showErr('Passwords do not match');
     return;
   }
+  let res;
   try {
-    const res = await api('/api/auth/setup', {
-      method: 'POST',
-      json: { password: pwd, confirm: confirm },
-    });
-    state.csrf = res.csrf_token || '';
+    res = await api('/api/auth/setup', { method: 'POST', json: { password: pwd, confirm } });
   } catch (err) {
-    return toast(err.message, 'error');
+    showErr(err.message);
+    return;
   }
-  state.unlocked = true;
-  // Show success message in the modal area, centered; keep modal open
-  showOverlay('Setup', 'Account created!', `
-    <div class="field">
-      <p class="success-message">Your master password is set.</p>
-    </div>
-    <div class="footer">
-      <button class="btn primary" id="overlay-success-unlock">Unlock</button>
-    </div>
-  `);
-  const successUnlockBtn = $('#overlay-success-unlock');
-  if (successUnlockBtn) {
-    // The account is already unlocked (state.unlocked = true). Redirect to dashboard.
-    successUnlockBtn.addEventListener('click', () => {
-      state.unlocked = true;
-      showView('dashboard');
-    });
+  if (!res || res.locked || !res.csrf_token) {
+    showErr('Could not create the account');
+    return;
   }
-  $('#status-label').textContent = 'Ready';
+  state.csrf = res.csrf_token;
+  state.setup = true;
+  $('#overlay-setup-pwd').value = '';
+  $('#overlay-setup-confirm').value = '';
+  if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
+  // Same modal now shows the unlock form.
+  showAuthModal();
 }
 
 const setupFormHTML = `
@@ -1160,7 +1153,6 @@ const setupFormHTML = `
   </div>
   <div id="setup-error" class="error" role="alert" hidden></div>
   <div class="footer">
-    <button class="btn" id="overlay-cancel">Cancel</button>
     <button class="btn primary" id="overlay-create">Create account</button>
   </div>
 `.trim();
@@ -1170,48 +1162,27 @@ const unlockFormHTML = `
     <label for="overlay-password">Master password</label>
     <input type="password" id="overlay-password" autocomplete="current-password" spellcheck="false">
   </div>
+  <div id="unlock-error" class="error" role="alert" hidden></div>
   <div class="footer">
-    <button class="btn" id="overlay-cancel">Cancel</button>
     <button class="btn primary" id="overlay-unlock">Unlock</button>
   </div>
 `.trim();
 
-/* ---------- init ---------- */
-async function init() {
-  if (state.unlocked) { showView('dashboard'); return; }
-  try {
-    const st = await api('/api/auth/status');
-    if (st.setup) {
-      showOverlay('Unlock KeyVault', 'Enter your master password to continue.', unlockFormHTML);
-      const unlockBtn = $('#overlay-unlock');
-      if (unlockBtn) {
-        unlockBtn.addEventListener('click', doUnlock);
-        unlockBtn.focus();
-      }
-      const cancelBtn = $('#overlay-cancel');
-      if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
-      const backdrop = $('#overlay-backdrop');
-      if (backdrop) backdrop.addEventListener('click', (e) => {
-        if (e.target.id === 'overlay-backdrop') hideOverlay();
-      });
-      const pwd = $('#overlay-password');
-      if (pwd) pwd.addEventListener('keydown', (e) => { if (e.key === 'Enter') doUnlock(); });
-    } else {
-      showOverlay('Create an account', 'Set a master password to encrypt your key vault.', setupFormHTML);
-      const setupPwd = $('#overlay-setup-pwd');
-      if (setupPwd) setupPwd.focus();
-      const createBtn = $('#overlay-create');
-      if (createBtn) createBtn.addEventListener('click', doSetup);
-      const setupPwdEl = $('#overlay-setup-pwd');
-      if (setupPwdEl) setupPwdEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSetup(); });
-      const cancelBtn = $('#overlay-cancel');
-      if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
-      const backdrop = $('#overlay-backdrop');
-      if (backdrop) backdrop.addEventListener('click', (e) => {
-        if (e.target.id === 'overlay-backdrop') hideOverlay();
-      });
+/* Show the auth modal. It is not dismissable: no backdrop click, no Escape,
+ * no Cancel. The same modal shows the setup form until a master password
+ * exists, then the unlock form. */
+function showAuthModal() {
+  $('#status-label').textContent = 'Locked';
+  if (state.setup) {
+    showOverlay('Unlock KeyVault', 'Enter your master password to continue.', unlockFormHTML);
+    const unlockBtn = $('#overlay-unlock');
+    if (unlockBtn) {
+      unlockBtn.addEventListener('click', doUnlock);
+      unlockBtn.focus();
     }
-  } catch (_) {
+    const pwd = $('#overlay-password');
+    if (pwd) pwd.addEventListener('keydown', (e) => { if (e.key === 'Enter') doUnlock(); });
+  } else {
     showOverlay('Create an account', 'Set a master password to encrypt your key vault.', setupFormHTML);
     const setupPwd = $('#overlay-setup-pwd');
     if (setupPwd) setupPwd.focus();
@@ -1219,13 +1190,27 @@ async function init() {
     if (createBtn) createBtn.addEventListener('click', doSetup);
     const setupPwdEl = $('#overlay-setup-pwd');
     if (setupPwdEl) setupPwdEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSetup(); });
-    const cancelBtn = $('#overlay-cancel');
-    if (cancelBtn) cancelBtn.addEventListener('click', hideOverlay);
-    const backdrop = $('#overlay-backdrop');
-    if (backdrop) backdrop.addEventListener('click', (e) => {
-      if (e.target.id === 'overlay-backdrop') hideOverlay();
-    });
   }
+}
+
+/* ---------- init ---------- */
+async function init() {
+  if (state.unlocked) { showView('dashboard'); return; }
+  try {
+    const st = await api('/api/auth/status');
+    state.setup = !!st.setup;
+    state.unlocked = !!st.unlocked;
+  } catch (_) {
+    state.setup = false;
+    state.unlocked = false;
+  }
+  if (state.unlocked) {
+    // Valid session survived the reload: stay on the dashboard, no modal.
+    $('#status-label').textContent = 'Ready';
+    showView('dashboard');
+    return;
+  }
+  showAuthModal();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
