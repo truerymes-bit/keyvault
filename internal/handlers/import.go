@@ -108,6 +108,32 @@ func rowsJSON(recs []importer.ValidatedRecord) []importRowJSON {
 	return out
 }
 
+// newProvidersJSON serializes new provider candidates for the import
+// preview. Keys are masked; a new provider contains the grouped records
+// under it for the user to confirm with one click.
+func newProvidersJSON(nps []*importer.NewProvider) []any {
+	out := make([]any, len(nps))
+	for i, np := range nps {
+		records := make([]any, len(np.Records))
+		for j, r := range np.Records {
+			records[j] = map[string]any{
+				"index":    i*10000 + j,
+				"line":     r.Line,
+				"email":    r.Email,
+				"provider": r.Provider,
+				"key":      maskedKey,
+				"status":   r.Status,
+				"valid":    true,
+			}
+		}
+		out[i] = map[string]any{
+			"name":    np.Name,
+			"records": records,
+		}
+	}
+	return out
+}
+
 func unmatchedJSON(lines []importer.UnmatchedLine) []importUnmatchedJSON {
 	out := make([]importUnmatchedJSON, 0, len(lines))
 	for _, u := range lines {
@@ -203,10 +229,11 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id": sess.ID,
-		"format":     sess.Format,
-		"rows":       rowsJSON(validated),
-		"unmatched":  unmatchedJSON(res.Unmatched),
+		"session_id":    sess.ID,
+		"format":        sess.Format,
+		"rows":          rowsJSON(validated),
+		"unmatched":     unmatchedJSON(res.Unmatched),
+		"new_providers": newProvidersJSON(res.NewProviders),
 	})
 }
 

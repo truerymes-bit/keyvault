@@ -25,10 +25,20 @@ type UnmatchedLine struct {
 	Reason string `json:"reason"`
 }
 
+// NewProvider is a heading that looked like a provider but is not in the
+// built-in or custom provider list. Records parsed under it are grouped here
+// for the user to confirm with one click, instead of being reported as
+// unmatched lines.
+type NewProvider struct {
+	Name    string   `json:"name"`
+	Records []Record `json:"records,omitempty"`
+}
+
 // Result is the output of parsing a document.
 type Result struct {
-	Records   []Record        `json:"records"`
-	Unmatched []UnmatchedLine `json:"unmatched"`
+	Records      []Record        `json:"records"`
+	Unmatched    []UnmatchedLine `json:"unmatched"`
+	NewProviders []*NewProvider  `json:"new_providers,omitempty"`
 }
 
 // DefaultProviders are the provider names recognized out of the box.
@@ -47,6 +57,27 @@ var headingTrailingPunct = strings.NewReplacer(
 	":", "", ";", "", ",", "", ".", "", "!", "", "-", "", "–", "", "—", "", "*", "", "_", "",
 )
 
+// trimTrailingPunct removes trailing heading punctuation from a candidate
+// provider name ("AnotherNewOne:" -> "AnotherNewOne"). Internal punctuation
+// is preserved so names like "My-Provider" keep their hyphen.
+func trimTrailingPunct(s string) string {
+	return strings.TrimRight(s, ":;,.!-–—*_ ")
+}
+
+// candidateProviderName returns the heading portion of a candidate line.
+// When a key is glued to a heading on the same line ("ElevenLabs:sk-…"),
+// the key (a token with no spaces after the colon) is not part of the
+// heading name.
+func candidateProviderName(line string) string {
+	if i := strings.Index(line, ":"); i >= 0 {
+		rest := line[i+1:]
+		if rest != "" && !strings.ContainsAny(rest, " 	") {
+			return trimTrailingPunct(line[:i])
+		}
+	}
+	return trimTrailingPunct(line)
+}
+
 // ParseTXT parses a plain-text import document. customProviders are extra
 // recognized provider names (e.g. added by the user); they are matched the
 // same way as the defaults.
@@ -54,6 +85,7 @@ func ParseTXT(input string, customProviders ...string) *Result {
 	known := append(append([]string{}, DefaultProviders...), customProviders...)
 	res := &Result{}
 	current := ""
+	newProviders := make(map[string]*NewProvider)
 
 	lines := strings.Split(input, "\n")
 	for i, raw := range lines {
@@ -76,6 +108,9 @@ func ParseTXT(input string, customProviders ...string) *Result {
 				rec.Status = StatusNoProvider
 			}
 			res.Records = append(res.Records, rec)
+			if np, ok := newProviders[current]; ok {
+				np.Records = append(np.Records, rec)
+			}
 			continue
 		}
 
@@ -87,15 +122,19 @@ func ParseTXT(input string, customProviders ...string) *Result {
 			continue
 		}
 
-		// Unrecognized. Lines containing '@' look like broken records and
-		// keep the current context; anything else looks like an unknown
-		// heading, so provider context is cleared fail-safe.
+		// Not a recognized heading and not a broken record (contains '@').
+		// A line with no email that looks like a heading is a candidate
+		// provider: group records under it and return it as a "new provider
+		// detected" item for user confirmation, not as an unmatched line.
 		if strings.Contains(line, "@") {
 			res.Unmatched = append(res.Unmatched, UnmatchedLine{Line: lineNo, Text: line, Reason: "malformed record"})
-		} else {
-			res.Unmatched = append(res.Unmatched, UnmatchedLine{Line: lineNo, Text: line, Reason: "unrecognized heading"})
-			current = ""
+			continue
 		}
+		name := candidateProviderName(line)
+		np := &NewProvider{Name: name}
+		res.NewProviders = append(res.NewProviders, np)
+		newProviders[name] = np
+		current = name
 	}
 	return res
 }

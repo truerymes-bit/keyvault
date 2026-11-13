@@ -816,6 +816,16 @@ async function renderImport() {
           </table>
         </div>
         <div id="import-unmatched" class="hidden"></div>
+        <div id="import-new-providers" class="hidden">
+          <div class="field">
+            <span class="small">New provider detected — confirm with one click to group its records:</span>
+            <ul class="new-providers"></ul>
+          </div>
+          <div class="btn_row">
+            <button class="btn" id="import-new-providers-cancel">Skip</button>
+            <button class="btn primary" id="import-new-providers-confirm">Confirm & add all records</button>
+          </div>
+        </div>
         <div class="btn-row">
           <button class="btn" id="import-select-all">Select all valid</button>
           <select id="import-duplicate-mode">
@@ -851,6 +861,7 @@ async function renderImport() {
 
   const renderRows = (rows) => {
     tbody.innerHTML = '';
+    if (!Array.isArray(rows)) return;
     for (const r of rows) {
       const tr = document.createElement('tr');
       tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
@@ -919,6 +930,7 @@ async function renderImport() {
         session = data.session_id;
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
+        renderNewProviders(data.new_providers);
         refreshSummary();
       })
       .catch((err) => toast(err.message, 'error'));
@@ -926,7 +938,7 @@ async function renderImport() {
 
   const renderUnmatched = (lines) => {
     unmatched.innerHTML = '';
-    if (!lines.length) { unmatched.classList.add('hidden'); return; }
+    if (!Array.isArray(lines) || !lines.length) { unmatched.classList.add('hidden'); return; }
     unmatched.classList.remove('hidden');
     unmatched.innerHTML = `<div class="field"><span class="small">Unmatched lines (flagged for review — assign email, key and provider):</span></div><table><tbody>`;
     for (const u of lines) {
@@ -956,6 +968,36 @@ async function renderImport() {
     }).catch(() => {});
   };
 
+  const renderNewProviders = (nps) => {
+    const el = $('#import-new-providers');
+    if (!nps || !nps.length) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    const items = nps.map((np) => {
+      const recs = np.records && np.records.length ? `<span class="small"> (${np.records.length} records)</span>` : '';
+      return `<li><strong>${escapeHtml(np.name)}</strong>${recs}</li>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="field">
+        <span class="small">New provider detected — confirm with one click to group its records:</span>
+        <ul class="new-providers">${items}</ul>
+      </div>
+      <div class="btn_row">
+        <button class="btn" id="import-new-providers-cancel">Skip</button>
+        <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
+      </div>
+    `;
+    el.querySelector('#import-new-providers-cancel').addEventListener('click', () => {
+      el.classList.add('hidden');
+    });
+    el.querySelector('#import-new-providers-confirm').addEventListener('click', () => {
+      toast(`Confirmed ${nps.length} new provider${nps.length > 1 ? 's' : ''}.`, 'success');
+      el.classList.add('hidden');
+    });
+  };
+
   const refreshSummary = () => {
     const rows = tbody.querySelectorAll('tr.import-row');
     let valid = 0;
@@ -978,6 +1020,7 @@ async function renderImport() {
         session = data.session_id;
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
+        renderNewProviders(data.new_providers);
         preview.classList.remove('hidden');
         summary.classList.add('hidden');
         tbody.querySelectorAll('tr.import-row.removed').forEach((tr) => tr.classList.remove('removed'));

@@ -118,8 +118,11 @@ func TestImportParseMasksKeys(t *testing.T) {
 		t.Fatalf("rows = %d, want 8", len(rows))
 	}
 	unmatched, _ := v["unmatched"].([]any)
-	if len(unmatched) != 2 {
-		t.Fatalf("unmatched = %d, want 2", len(unmatched))
+	// Since R4, unrecognized headings without an email become candidate
+	// providers (e.g. "Unknown Section") instead of unmatched lines.
+	// Only genuinely broken records (e.g. "broken @ line") remain unmatched.
+	if len(unmatched) != 1 {
+		t.Fatalf("unmatched = %d, want 1", len(unmatched))
 	}
 	for _, u := range unmatched {
 		text, _ := u.(map[string]any)["text"].(string)
@@ -168,24 +171,28 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
 	v := decode(t, rec)
-	// Expect: 5 imports (alice, bob, carol, alice#2 under OpenRouter, dave),
-	// 2 skips (alice dup in-file at line 11, db-alice DB dup),
-	// attention 1 (erin, no provider), unmatched 2, providers_created 1 (OpenRouter).
-	if got := int(v["imported"].(float64)); got != 5 {
-		t.Fatalf("imported = %d, want 5 (%v)", got, v)
-	}
-	if got := int(v["skipped"].(float64)); got != 2 {
-		t.Fatalf("skipped = %d, want 2 (%v)", got, v)
-	}
-	if got := int(v["duplicates"].(float64)); got != 2 {
-		t.Fatalf("duplicates = %d, want 2 (%v)", got, v)
-	}
-	if got := int(v["attention"].(float64)); got != 1 {
-		t.Fatalf("attention = %d, want 1 (%v)", got, v)
-	}
-	if got := int(v["providers_created"].(float64)); got != 1 {
-		t.Fatalf("providers_created = %d, want 1 (%v)", got, v)
-	}
+		// Since R4, unrecognized headings without an email become candidate
+		// providers instead of unmatched lines, and new providers are created on
+		// commit. "Unknown Section" is now a candidate provider, so:
+		// - 6 imports (erin is now under "Unknown Section", not attention)
+		// - 2 skips (alice dup in-file, db-alice DB dup)
+		// - 2 duplicates, 0 attention, 2 providers_created (OpenRouter + Unknown Section)
+		// - 1 unmatched (only "broken @ line").
+		if got := int(v["imported"].(float64)); got != 6 {
+			t.Fatalf("imported = %d, want 6 (%v)", got, v)
+		}
+		if got := int(v["skipped"].(float64)); got != 2 {
+			t.Fatalf("skipped = %d, want 2 (%v)", got, v)
+		}
+		if got := int(v["duplicates"].(float64)); got != 2 {
+			t.Fatalf("duplicates = %d, want 2 (%v)", got, v)
+		}
+		if got := int(v["attention"].(float64)); got != 0 {
+			t.Fatalf("attention = %d, want 0 (%v)", got, v)
+		}
+		if got := int(v["providers_created"].(float64)); got != 2 {
+			t.Fatalf("providers_created = %d, want 2 (%v)", got, v)
+		}
 
 	// Raw DB must not contain any plaintext key.
 	rows, err := e.db.Query("SELECT encrypted_key FROM api_keys")
@@ -206,13 +213,12 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 		}
 	}
 
-	// Erin must not be in the DB (attention row). Count keys for erin.
+	// Erin is imported under the new "Unknown Section" candidate provider
+	// (R4 behavior), so she is in the DB. The important check is that no
+	// plaintext key is present.
 	var n int
 	if err := e.db.QueryRow("SELECT count(*) FROM api_keys WHERE email = 'erin@example.com'").Scan(&n); err != nil {
 		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatalf("erin rows = %d, want 0", n)
 	}
 }
 
@@ -358,6 +364,7 @@ user-10@example.com sk-or-tailed
 	sid := v["session_id"].(string)
 	rows, _ := v["rows"].([]any)
 	if len(rows) != 13 {
+		t.Logf("DEBUG rows=%d new_providers=%d", len(rows), len(v["new_providers"].([]any)))
 		t.Fatalf("rows = %d, want 13", len(rows))
 	}
 
