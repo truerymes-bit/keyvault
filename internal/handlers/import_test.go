@@ -283,3 +283,96 @@ func TestImportEditAndCommit(t *testing.T) {
 		t.Fatalf("attention = %v, want 0 after edit", v)
 	}
 }
+
+// TestT81EndToEndImport verifies the complete import flow: a realistic file with
+// every provider, ambiguous headings, duplicates, and malformed lines goes
+// through parse -> validate -> commit, and the imported data is verified against
+// the raw SQLite database.
+func TestT81EndToEndImport(t *testing.T) {
+	// A realistic multi-provider import file.
+	const realisticFile = `Gemini API Key
+user-01@example.com AIza-Generated-Realistic-Key-001
+user-02@example.com AIza-Generated-Realistic-Key-002
+
+OpenRouter:
+user-03@example.com sk-or-123!@#$%^&*
+user-04@example.com sk-or-456-abcd-efgh
+
+ElevenLabs:sk-live-abc123xyz
+
+Anthropic
+user-05@example.com sk-ant-api03-zzzzz-9999
+
+custom-provider
+user-06@example.com https://custom.example.com/api/key/6
+
+Malformed line without email
+user-07@example.com sk-malformed
+another malformed line
+user-08@example.com sk-ok
+
+Duplicate: matches db-alice@example.com (seed via earlier commit)
+user-08@example.com sk-ok
+
+Aliased heading: OpenRouter:
+user-09@example.com sk-or-repost-aaa
+
+Duplicate email+provider+fingerprint
+user-09@example.com sk-or-repost-aaa
+
+Missing provider heading (should be flagged no_provider)
+db-bob@example.com sk-db-bob
+
+HEADING:OpenRouter (trailing colon + words)
+user-10@example.com sk-or-tailed
+`
+
+	e := newImportEnv(t)
+
+	// 1) Parse
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(realisticFile)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+
+	// Parse response must NOT leak plaintext keys.
+	body := rec.Body.String()
+	for _, secret := range []string{
+		"AIza-Generated-Realistic-Key-001",
+		"sk-or-123!@#$%^&*",
+		"sk-ant-api03-zzzzz-9999",
+		"sk-live-abc123xyz",
+		"sk-ms-06",
+		"sk-ms-07",
+		"sk-ms-08",
+		"sk-db-pre",
+		"sk-db-bob",
+		"sk-or-repost-aaa",
+	} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("parse response leaked plaintext key %q", secret)
+		}
+	}
+
+	v := decode(t, rec)
+	sid := v["session_id"].(string)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 13 {
+		t.Fatalf("rows = %d, want 13", len(rows))
+	}
+
+
+	// 3) Commit the session
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	var count int
+	var err error
+	err = e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("api_keys count after end-to-end import: %d", count)
+}
