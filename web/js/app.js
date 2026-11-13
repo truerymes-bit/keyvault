@@ -884,9 +884,18 @@ async function doSetup() {
 }
 
 /* ---------- init ---------- */
-function init() {
+async function init() {
   if (state.unlocked) { showView('dashboard'); return; }
-  showOverlay('Create an account', 'Set a master password to encrypt your key vault.');
+  try {
+    const st = await api('/api/auth/status');
+    if (st.setup) {
+      showOverlay('Unlock KeyVault', 'Enter your master password to continue.');
+    } else {
+      showOverlay('Create an account', 'Set a master password to encrypt your key vault.');
+    }
+  } catch (_) {
+    showOverlay('Create an account', 'Set a master password to encrypt your key vault.');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
