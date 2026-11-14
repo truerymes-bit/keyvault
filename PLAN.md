@@ -111,7 +111,7 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 - [x] **R3 API Keys page.** Style it. Remove redundant text: when there are 0 keys, show one empty state with "Add key" and "Import" buttons, not both a count line and "No matching keys". Add the Add Key form as a modal opened from this page, with an existing-or-new provider choice and inline validation errors. Add an "Import" button here (the flow is built in R5). Links use a light accent color readable on the dark blue background, not purple.
   Done when: add, edit, delete, reveal, copy, and search all work from this page.
 
-- [x] **R4 Provider recognition in the parser.** Unknown headings are candidate providers; records are grouped under them and returned for one-click confirmation instead of unmatched lines. Keys glued to headings are stripped from the provider name. | 2026-11-13 | R4 | go test/build pass; browser E2E: 8 rows, 0 unmatched, 3 new providers confirmed; new_providers rendered in import view.
+- [!] **R4 Provider recognition in the parser.** Unknown headings are candidate providers; records are grouped under them and returned for one-click confirmation instead of unmatched lines. Keys glued to headings are stripped from the provider name. | 2026-11-13 | R4 | go test/build pass; browser E2E: 8 rows, 0 unmatched, 3 new providers confirmed; new_providers rendered in import view.
   Done when: go tests pass, and the user's file imports with all records assigned to a provider.
 ^- [?] **R5 Import flow.** A modal wizard opened from the API Keys page, three steps. Step 1: paste or upload, optional custom provider names. Step 2: review table inside a width-limited, internally scrolling container. All valid rows are selected by default (remove the "select all valid" button). Rows needing attention appear first. Status text shows only for problems, in plain words. Unmatched rows have an email field, a key field, a provider dropdown listing every provider plus "Create new provider", and a small subtle remove control. Duplicates are skipped by default, shown as a count with an expandable list, no dropdown. Step 3: summary of imported, skipped, duplicates, needs attention. Closing the flow clears all state and refreshes the key list. Remove Import from the sidebar.
   Done when: pasting the user's file ends with the correct counts and keys on the API Keys page.
@@ -119,6 +119,21 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
   Done when: backup downloads a file and restore from it works.
 - [ ] **R7 Layout.** Center content with a max width of about 1200px. Use rem units. Tables scroll inside their own container. Test at 1440x900, 1920x1080, and 390px wide, not only a 4K display.
   Done when: every page looks right at those three sizes.
+
+## R5 and R4 failed user testing. Fix in this order, then set [?] and log browser test steps.
+
+1. DATA BUG. Imported keys reveal as dots, so import stores the masked placeholder instead of the real key. The commit step must use the real key held in the server-side import session. Add a Go test: parse a file, commit, reveal, and the revealed key equals the original.
+2. CSRF after refresh. GET /api/auth/status returns csrf_token when the session is valid. app.js loads it on startup before any request. Refresh must not break Add key or Import.
+3. JS errors. "could not load keys: summary is not defined" on the API Keys page, and "Add key" and "Import" stop working after the first wizard run. Find the out-of-scope variable. Closing the wizard resets all of its state.
+4. Wizard step 1 has no way out. Add a Cancel button on every step. Escape and clicking the backdrop also close it.
+5. Review step shows real keys. The preview returns plaintext keys for verification, with a Hide keys toggle. After import, all lists mask keys again. This overrides amendment 11 for the preview response only.
+6. Remove the "Skip" and "Confirm and add all" buttons. The review step has one primary button, "Import N records", where N counts the rows that will be saved. Rows with no provider are not counted and are highlighted.
+7. Every row, every detected provider, and every unmatched line has a small remove control inside the modal. Large red boxes are gone.
+8. Lines that are not provider headings are not "New provider detected". A line with a colon and a value, a slash, or an http word (Content-Type, application/json, HTTP-Referer) is an unrecognized line. Unrecognized lines can be removed or turned into a provider by the user.
+9. Each row has a provider field where the user can pick an existing provider or type a new name. New names are created at import, matched case-insensitively, without duplicates.
+10. "Needs attention" is shown on the review step, not the summary step. The summary shows only the final counts.
+11. Gemini headings are not detected (16 records). The heading lines from the user's real file are listed below in the Log by the user. Make the parser handle them and add each as a test case.
+12. Dashboard reveal for imported keys shows dots (see 1). Reveal shows only the API key, never the email.
 
 ## Log
 
