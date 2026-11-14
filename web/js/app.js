@@ -19,7 +19,6 @@ const VIEWS = {
   keys:      { name: 'API Keys', icon: '🔑', label: 'API Keys' },
   addKey:    { name: 'Add Key', icon: '+', label: 'Add Key' },
   providers: { name: 'Providers', icon: '📦', label: 'Providers' },
-  import:    { name: 'Import', icon: '📥', label: 'Import' },
   settings:  { name: 'Settings', icon: '⚙', label: 'Settings' },
 };
 
@@ -296,14 +295,13 @@ async function renderKeys() {
       </div>
       <div class="btn-row" style="justify-content:flex-end;">
         <button class="btn" id="keys-add-key">Add key</button>
-        <a class="btn primary" id="keys-import" href="#/import">Import</a>
+        <button class="btn primary" id="keys-import">Import</button>
       </div>
     </div>`;
 
   const addKeyBtn = document.getElementById('keys-add-key');
   const importBtn = document.getElementById('keys-import');
-  if (addKeyBtn) addKeyBtn.addEventListener('click', openAddKeyModal);
-  if (importBtn) importBtn.addEventListener('click', () => { location.hash = '#/import'; });
+  if (importBtn) importBtn.addEventListener('click', () => openImportModal());
 
   const searchInput = $('#key-search');
   const countEl = $('#key-search-count');
@@ -346,17 +344,15 @@ async function renderKeys() {
             <p class="lede">Add a key or import provider sections to get started.</p>
             <div class="btn-row">
               <button class="btn primary" id="empty-add-key">Add key</button>
-              <a class="btn" id="empty-import" href="#/import">Import</a>
+              <button class="btn" id="empty-import">Import</button>
             </div>
           </div>
         </div>`;
       const emptyAdd = document.getElementById('empty-add-key');
       const emptyImport = document.getElementById('empty-import');
-      if (emptyAdd) emptyAdd.addEventListener('click', openAddKeyModal);
-      if (emptyImport) emptyImport.addEventListener('click', () => { location.hash = '#/import'; });
+      if (emptyImport) emptyImport.addEventListener('click', () => openImportModal());
       return;
     }
-    const summary = document.createElement('p');
     summary.className = 'small';
     summary.textContent = `${total} key${total !== 1 ? 's' : ''} in ${groups.length} account${groups.length !== 1 ? 's' : ''}`;
     root.appendChild(summary);
@@ -782,34 +778,42 @@ function closeEditModal() {
   overlay.querySelectorAll('#overlay-row > *').forEach((el) => el.remove());
 }
 
-async function renderImport() {
-  const root = $('#view-root');
-  root.innerHTML = `
-    <div class="view">
-      <h1>Import API Keys</h1>
-      <p class="lede">Paste your provider section text below. Headings set the provider; email/key lines become records.</p>
-      <div class="field">
-        <label for="import-format">Format</label>
-        <select id="import-format">
-          <option value="txt">TXT</option>
-          <option value="csv">CSV</option>
-        </select>
+function openImportModal() {
+  // R5: Import is a 3-step modal wizard opened from the API Keys page.
+  showOverlay('Import API Keys', 'Paste your provider sections, review, and import.', '');
+  const overlayRow = $('#overlay-row');
+
+  overlayRow.innerHTML = `
+    <div class="import-wizard">
+      <div class="wizard-steps">
+        <span class="wizard-step active" data-step="1">1. Paste</span>
+        <span class="wizard-step" data-step="2">2. Review</span>
+        <span class="wizard-step" data-step="3">3. Summary</span>
       </div>
-      <div class="field">
-        <label for="import-text">Provider sections and records</label>
-        <textarea id="import-text" rows="9" placeholder="Gemini API Key&#10;user@example.com AQ.Ab8RN6KwaaGNVNX...&#10;OpenRouter&#10;user@example.com «redacted:sk-…»" spellcheck="false"></textarea>
+
+      <div class="wizard-panel" data-step="1">
+        <div class="field">
+          <label for="import-format">Format</label>
+          <select id="import-format">
+            <option value="txt">TXT</option>
+            <option value="csv">CSV</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="import-text">Provider sections and records</label>
+          <textarea id="import-text" rows="9" placeholder="Gemini API Key&#10;user@example.com AQ.Ab8RN6KwaaGNVNX...&#10;OpenRouter&#10;user@example.com «redacted:sk-…»" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label for="import-custom">Custom provider names (one per line, optional)</label>
+          <textarea id="import-custom" rows="2" placeholder="MyProvider"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="import-next-1">Next</button>
+        </div>
       </div>
-      <div class="field">
-        <label for="import-custom">Custom provider names (one per line, optional)</label>
-        <textarea id="import-custom" rows="2" placeholder="MyProvider"></textarea>
-      </div>
-      <div class="btn-row">
-        <button class="btn primary" id="import-parse">Parse</button>
-        <button class="btn" id="import-clear">Clear</button>
-      </div>
-      <div id="import-preview" class="hidden">
-        <div class="field"><span class="small">Columns are editable. Click a cell to edit email, provider or key.</span></div>
-        <div class="table-wrap">
+
+      <div class="wizard-panel hidden" data-step="2">
+        <div class="table-wrap" style="max-height: 320px; overflow-y: auto; width: 100%;">
           <table id="import-table">
             <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
             <tbody></tbody>
@@ -823,50 +827,64 @@ async function renderImport() {
           </div>
           <div class="btn_row">
             <button class="btn" id="import-new-providers-cancel">Skip</button>
-            <button class="btn primary" id="import-new-providers-confirm">Confirm & add all records</button>
+            <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
           </div>
         </div>
+        <div id="import-dup-summary" class="hidden"></div>
         <div class="btn-row">
-          <button class="btn" id="import-select-all">Select all valid</button>
-          <select id="import-duplicate-mode">
-            <option value="skip">Skip duplicates</option>
-            <option value="import">Import duplicates</option>
-            <option value="review">Review duplicates</option>
-          </select>
-          <button class="btn primary" id="import-commit">Import selected</button>
-        </div>
-        <div id="import-summary" class="hidden"></div>
-        <div class="footer" style="justify-content:flex-end;">
-          <a class="btn" href="#/keys">Cancel</a>
+          <button class="btn" id="import-back-2">Back</button>
+          <button class="btn primary" id="import-next-2">Next</button>
         </div>
       </div>
-    </div>`;
+
+      <div class="wizard-panel hidden" data-step="3">
+        <div id="import-step3-summary" class="summary-box"></div>
+        <div class="btn-row">
+          <button class="btn primary" id="import-close-3">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const stepPanels = overlayRow.querySelectorAll('.wizard-panel');
+  const stepIndicators = overlayRow.querySelectorAll('.wizard-step');
+  const showStep = (n) => {
+    stepPanels.forEach((p) => p.classList.toggle('hidden', Number(p.dataset.step) !== n));
+    stepIndicators.forEach((s) => s.classList.toggle('active', Number(s.dataset.step) === n));
+  };
 
   const textarea = $('#import-text');
   const custom = $('#import-custom');
-  const parseBtn = $('#import-parse');
-  const clearBtn = $('#import-clear');
-  const preview = $('#import-preview');
   const tbody = $('#import-table tbody');
-  const unmatched = $('#import-unmatched');
-  const summary = $('#import-summary');
-  const selectAll = $('#import-select-all');
-  const commitBtn = $('#import-commit');
-  const dupMode = $('#import-duplicate-mode');
-  const cellInputs = new Map();
+  const unmatchedEl = $('#import-unmatched');
+  const newProvEl = $('#import-new-providers');
+  const dupSummary = $('#import-dup-summary');
+  const step3Summary = $('#import-step3-summary');
 
+  const cellInputs = new Map();
   let session = null;
+  let lastData = null;
 
   const masked = (k) => (k || '').replace(/\S/g, '•');
+
+  const showStep2 = () => showStep(2);
+  const showStep3 = () => showStep(3);
 
   const renderRows = (rows) => {
     tbody.innerHTML = '';
     if (!Array.isArray(rows)) return;
-    for (const r of rows) {
+    // Rows needing attention appear first; valid rows after.
+    const sorted = [...rows].sort((a, b) => {
+      const aAtt = a.valid ? 0 : 1;
+      const bAtt = b.valid ? 0 : 1;
+      if (aAtt !== bAtt) return bAtt - aAtt;
+      return 0;
+    });
+    for (const r of sorted) {
       const tr = document.createElement('tr');
       tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
       tr.dataset.index = r.index;
-      const keyCell = r.key ? `<span class="cell key-cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell key-cell" data-field="key">—</span>`;
+      const keyCell = r.key ? `<span class="cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
       tr.innerHTML = `
         <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
         <td><span class="cell" data-field="provider">${escapeHtml(r.provider)}</span></td>
@@ -931,16 +949,15 @@ async function renderImport() {
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
         renderNewProviders(data.new_providers);
-        refreshSummary();
       })
       .catch((err) => toast(err.message, 'error'));
   };
 
   const renderUnmatched = (lines) => {
-    unmatched.innerHTML = '';
-    if (!Array.isArray(lines) || !lines.length) { unmatched.classList.add('hidden'); return; }
-    unmatched.classList.remove('hidden');
-    unmatched.innerHTML = `<div class="field"><span class="small">Unmatched lines (flagged for review — assign email, key and provider):</span></div><table><tbody>`;
+    unmatchedEl.innerHTML = '';
+    if (!Array.isArray(lines) || !lines.length) { unmatchedEl.classList.add('hidden'); return; }
+    unmatchedEl.classList.remove('hidden');
+    unmatchedEl.innerHTML = `<div class="field"><span class="small">Unmatched lines (flagged for review — assign email, key and provider):</span></div><table><tbody>`;
     for (const u of lines) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -951,13 +968,14 @@ async function renderImport() {
             <input class="inline-editing" id="unmatch-key-${u.line}" placeholder="API key" style="width:220px;">
             <select id="unmatch-provider-${u.line}" style="width:180px;">
               <option value="">Assign provider…</option>
+              <option value="__new__">Create new provider</option>
             </select>
           </div>
         </td>`;
-      unmatched.appendChild(tr);
+      unmatchedEl.appendChild(tr);
     }
     api('/api/providers').then((providers) => {
-      unmatched.querySelectorAll('select').forEach((sel) => {
+      unmatchedEl.querySelectorAll('select').forEach((sel) => {
         providers.forEach((p) => {
           const opt = document.createElement('option');
           opt.value = p.name;
@@ -969,17 +987,16 @@ async function renderImport() {
   };
 
   const renderNewProviders = (nps) => {
-    const el = $('#import-new-providers');
     if (!nps || !nps.length) {
-      el.classList.add('hidden');
+      newProvEl.classList.add('hidden');
       return;
     }
-    el.classList.remove('hidden');
+    newProvEl.classList.remove('hidden');
     const items = nps.map((np) => {
       const recs = np.records && np.records.length ? `<span class="small"> (${np.records.length} records)</span>` : '';
       return `<li><strong>${escapeHtml(np.name)}</strong>${recs}</li>`;
     }).join('');
-    el.innerHTML = `
+    newProvEl.innerHTML = `
       <div class="field">
         <span class="small">New provider detected — confirm with one click to group its records:</span>
         <ul class="new-providers">${items}</ul>
@@ -989,28 +1006,16 @@ async function renderImport() {
         <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
       </div>
     `;
-    el.querySelector('#import-new-providers-cancel').addEventListener('click', () => {
-      el.classList.add('hidden');
+    newProvEl.querySelector('#import-new-providers-cancel').addEventListener('click', () => {
+      newProvEl.classList.add('hidden');
     });
-    el.querySelector('#import-new-providers-confirm').addEventListener('click', () => {
+    newProvEl.querySelector('#import-new-providers-confirm').addEventListener('click', () => {
       toast(`Confirmed ${nps.length} new provider${nps.length > 1 ? 's' : ''}.`, 'success');
-      el.classList.add('hidden');
+      newProvEl.classList.add('hidden');
     });
   };
 
-  const refreshSummary = () => {
-    const rows = tbody.querySelectorAll('tr.import-row');
-    let valid = 0;
-    rows.forEach((tr) => { if (tr.classList.contains('valid')) valid++; });
-    const counts = { imported: 0, skipped: 0, duplicates: 0, attention: 0, providers_created: 0 };
-    // Refresh counts from a fresh session state via the server when possible.
-    const pending = document.querySelectorAll('tr.import-row.removed');
-    summary.textContent = `Preview: ${rows.length} row${rows.length !== 1 ? 's' : ''}${pending.length ? ' (removed rows shown for review)' : ''}, select all then Import selected.`;
-    summary.classList.remove('hidden');
-    selectAll.textContent = `Select all valid (${valid})`;
-  };
-
-  parseBtn.addEventListener('click', () => {
+  $('#import-next-1').addEventListener('click', () => {
     const text = textarea.value.trim();
     const format = $('#import-format').value;
     const provs = custom.value.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -1018,36 +1023,19 @@ async function renderImport() {
     api('/api/import/parse', { method: 'POST', json: { text, format, custom_providers: provs } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
         session = data.session_id;
+        lastData = data;
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
         renderNewProviders(data.new_providers);
-        preview.classList.remove('hidden');
-        summary.classList.add('hidden');
-        tbody.querySelectorAll('tr.import-row.removed').forEach((tr) => tr.classList.remove('removed'));
-        cellInputs.clear();
+        showStep2();
       })
       .catch((err) => toast(err.message, 'error'));
   });
 
-  clearBtn.addEventListener('click', () => {
-    textarea.value = '';
-    custom.value = '';
-    preview.classList.add('hidden');
-    tbody.innerHTML = '';
-    unmatched.innerHTML = '';
-    summary.classList.add('hidden');
-    cellInputs.clear();
-    session = null;
-  });
+  $('#import-back-2').addEventListener('click', () => showStep(1));
 
-  selectAll.addEventListener('click', () => {
-    const all = tbody.querySelectorAll('tr.import-row:not(.removed)');
-    all.forEach((tr) => {
-      if (!tr.classList.contains('valid')) tr.style.backgroundColor = '#1a2744';
-    });
-  });
-
-  commitBtn.addEventListener('click', () => {
+  $('#import-next-2').addEventListener('click', () => {
+    // Collect all rows (removed rows included with empty fields)
     const rows = [];
     tbody.querySelectorAll('tr.import-row').forEach((tr) => {
       const idx = Number(tr.dataset.index);
@@ -1061,16 +1049,27 @@ async function renderImport() {
       }
     });
     if (!rows.length) { toast('Nothing to import', 'error'); return; }
-    api('/api/import/commit', { method: 'POST', json: { session_id: session, records: rows, duplicate_mode: dupMode.value } }, { 'X-CSRF-Token': state.csrf })
+    api('/api/import/commit', { method: 'POST', json: { session_id: session, records: rows, duplicate_mode: 'skip' } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
-        toast(`Imported ${data.imported} · skipped ${data.skipped} · attention ${data.attention} · duplicates ${data.duplicates} · providers created ${data.providers_created}`);
-        summary.textContent = `Imported ${data.imported}, skipped ${data.skipped}, attention ${data.attention}, duplicates ${data.duplicates}, providers created ${data.providers_created}.`;
-        summary.classList.remove('hidden');
-        preview.classList.add('hidden');
+        lastData = data;
+        step3Summary.innerHTML = `
+          <div class="summary-row"><strong>Imported:</strong> ${data.imported}</div>
+          <div class="summary-row"><strong>Skipped:</strong> ${data.skipped}</div>
+          <div class="summary-row"><strong>Duplicates:</strong> ${data.duplicates}</div>
+          <div class="summary-row"><strong>Needs attention:</strong> ${data.attention}</div>
+          <div class="summary-row"><strong>Providers created:</strong> ${data.providers_created}</div>
+        `;
+        showStep3();
+        renderKeys();
       })
       .catch((err) => toast(err.message, 'error'));
   });
 
+  $('#import-close-3').addEventListener('click', () => {
+    $('#overlay-backdrop').hidden = true;
+    $('#overlay-row').innerHTML = '';
+    renderKeys();
+  });
 }
   async function renderSettings() {
   const root = $('#view-root');
@@ -1300,7 +1299,9 @@ async function showView(view) {
   } else if (view === 'providers') {
     await renderProviders();
   } else if (view === 'import') {
-    await renderImport();
+    // R5: import is a modal opened from the API Keys page, not a hash view
+    openImportModal();
+    return;
   } else if (view === 'settings') {
     await renderSettings();
   } else {

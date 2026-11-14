@@ -310,3 +310,12 @@ a { color: var(--accent); }
 /* ---------- misc ---------- */
 hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .kbd { font-size: 11px; background: var(--panel-2); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+.hidden { display: none !important; }
+
+.import-wizard { display: flex; flex-direction: column; gap: 16px; }
+.wizard-steps { display: flex; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.wizard-step { color: var(--muted); font-size: 13px; padding: 4px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); }
+.wizard-step.active { color: var(--text); background: var(--accent); border-color: var(--accent); }
+.wizard-panel { display: flex; flex-direction: column; gap: 12px; }
+.summary-box { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--panel-2); border-radius: var(--radius); border: 1px solid var(--border); }
+.summary-row { font-size: 14px; color: var(--text); }
