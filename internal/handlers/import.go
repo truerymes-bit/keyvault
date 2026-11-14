@@ -112,24 +112,24 @@ func rowsJSONWithKeys(recs []importer.ValidatedRecord, showKeys bool) []importRo
 		if len(r.Fingerprint) >= 4 {
 			row.FingerprintPrefix = hex.EncodeToString(r.Fingerprint[:4])
 		}
-			if len(r.Fingerprint) >= 4 {
-				row.FingerprintPrefix = hex.EncodeToString(r.Fingerprint[:4])
-			}
-			out = append(out, row)
+		if len(r.Fingerprint) >= 4 {
+			row.FingerprintPrefix = hex.EncodeToString(r.Fingerprint[:4])
 		}
-		return out
+		out = append(out, row)
 	}
+	return out
+}
 
-	// newProvidersJSON serializes new provider candidates.
-	// Keys are masked; a new provider contains the grouped records
-	// under it for the user to confirm with one click.
-	func newProvidersJSON(nps []*importer.NewProvider) []any {
-		return newProvidersJSONWithKeys(nps, false)
-	}
+// newProvidersJSON serializes new provider candidates.
+// Keys are masked; a new provider contains the grouped records
+// under it for the user to confirm with one click.
+func newProvidersJSON(nps []*importer.NewProvider) []any {
+	return newProvidersJSONWithKeys(nps, false)
+}
 
-	// newProvidersJSONWithKeys serializes new provider candidates.
-	// Keys are visible for verification.
-	func newProvidersJSONWithKeys(nps []*importer.NewProvider, showKeys bool) []any {
+// newProvidersJSONWithKeys serializes new provider candidates.
+// Keys are visible for verification.
+func newProvidersJSONWithKeys(nps []*importer.NewProvider, showKeys bool) []any {
 	out := make([]any, len(nps))
 	for i, np := range nps {
 		records := make([]any, len(np.Records))
@@ -255,13 +255,13 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"session_id":    sess.ID,
-			"format":        sess.Format,
-			"rows":          rowsJSONWithKeys(validated, true),
-			"unmatched":     unmatchedJSON(res.Unmatched),
-			"new_providers": newProvidersJSONWithKeys(res.NewProviders, true),
-		})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":    sess.ID,
+		"format":        sess.Format,
+		"rows":          rowsJSONWithKeys(validated, true),
+		"unmatched":     unmatchedJSON(res.Unmatched),
+		"new_providers": newProvidersJSONWithKeys(res.NewProviders, true),
+	})
 }
 
 // Validate handles POST /api/import/validate. It applies full-replacement

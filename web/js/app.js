@@ -293,10 +293,6 @@ async function renderKeys() {
         <input id="key-search" placeholder="Search email, provider or label…" autocomplete="off">
         <span id="key-search-count" class="small"></span>
       </div>
-      <label class="hide-keys-toggle">
-        <input id="keys-hide" type="checkbox">
-        <span>Hide keys</span>
-      </label>
       <div class="btn-row" style="justify-content:flex-end;">
         <button class="btn" id="keys-add-key">Add key</button>
         <button class="btn primary" id="keys-import">Import</button>
@@ -338,8 +334,6 @@ async function renderKeys() {
     clearTimeout(searchInput._t);
     searchInput._t = setTimeout(() => applyFilter(searchInput.value), 200);
   });
-  $('#keys-hide').addEventListener('change', () => {
-    $('#view-root').classList.toggle('hide-keys', $('#keys-hide').checked);
   });
 
   try {
@@ -833,6 +827,10 @@ function openImportModal() {
             <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
+      <div class="hide-keys-toggle" style="margin: 12px 0; font-size: 13px; color: var(--muted);">
+        <input id="import-keys-hide" type="checkbox">
+        <span>Hide keys</span>
+      </div>
         </div>
         <div id="import-unmatched" class="hidden"></div>
         <div id="import-new-providers" class="hidden">
@@ -885,7 +883,14 @@ function openImportModal() {
   const masked = (k) => (k || '').replace(/\S/g, '•');
 
   const showStep2 = () => showStep(2);
+
+  let hideKeys = false;
   const showStep3 = () => showStep(3);
+
+  $('#import-keys-hide').addEventListener('change', () => {
+    hideKeys = $('#import-keys-hide').checked;
+    renderRows(lastData);
+  });
 
   const renderRows = (rows) => {
     tbody.innerHTML = '';
@@ -901,7 +906,8 @@ function openImportModal() {
       const tr = document.createElement('tr');
       tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
       tr.dataset.index = r.index;
-      const keyCell = r.key ? `<span class="cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
+      const displayKey = hideKeys ? masked(r.key) : (r.key || '');
+      const keyCell = displayKey ? `<span class="cell" data-field="key">${escapeHtml(displayKey)}</span>` : `<span class="cell" data-field="key">—</span>`;
       tr.innerHTML = `
         <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
         <td><span class="cell" data-field="provider">${escapeHtml(r.provider)}</span></td>
