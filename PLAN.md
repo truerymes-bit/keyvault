@@ -134,6 +134,9 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 10. "Needs attention" is shown on the review step, not the summary step. The summary shows only the final counts.
 11. Real heading cases from the user file. Headings: "Gemmini API Keys:" (typo of Gemini), "OpenRouter", "ELEVENLABS", "Jina.ai", "HuggingFace". A heading with no match is offered as a new provider and, when it is within 2 edits of a known provider, shows "Did you mean Gemini?" with a one-click accept. Never correct typos silently. Key-only lines under a provider ("jina_1bf...1Fdj2", "hf_gcX...zFG") become records with an empty email that the user must fill in. ELEVENLABS matches ElevenLabs. Add each of these as a Go test case.
 12. Dashboard reveal for imported keys shows dots (see 1). Reveal shows only the API key, never the email.
+13. Review step: clicking into a field and clicking out must not re-render or collapse the modal. Editing a field updates only that row in state, with no rebuild on blur or change, so many rows can be edited in a row. There is no step 2a: all editing, removing, and provider choosing happen in step 2 with one Import button. Do this together with item 6.
+14. Commit saves only rows that have a provider, an email, and a key. Unmatched lines and detected non-provider lines are never written to the database. Rows needing attention are listed in step 2 so the user can fix or remove them before import. Add a Go test: a file containing Content-Type, application/json, and HTTP-Referer lines commits zero junk records and zero junk providers.
+15. Add a Delete button with a confirm step on every key row and in the edit modal. The list refreshes after delete. Add a Go test that delete removes the row from the database. The Add key button on the API Keys page must open its modal.
 
 ## Log
 

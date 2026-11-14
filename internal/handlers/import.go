@@ -86,6 +86,12 @@ func maskUnmatched(text string) string {
 }
 
 func rowsJSON(recs []importer.ValidatedRecord) []importRowJSON {
+	return rowsJSONWithKeys(recs, false)
+}
+
+// rowsJSONWithKeys returns rows with both masked and plaintext keys.
+// When showKeys is true, the plaintext key is used; otherwise the masked key.
+func rowsJSONWithKeys(recs []importer.ValidatedRecord, showKeys bool) []importRowJSON {
 	out := make([]importRowJSON, 0, len(recs))
 	for i, r := range recs {
 		row := importRowJSON{
@@ -93,38 +99,54 @@ func rowsJSON(recs []importer.ValidatedRecord) []importRowJSON {
 			Line:            r.Line,
 			Email:           r.Email,
 			Provider:        r.Provider,
-			Key:             maskedKey,
 			Status:          r.Status,
 			Valid:           r.Valid,
-			Errors:          r.Errors,
 			Duplicate:       r.Duplicate,
 			DuplicateSource: r.DuplicateSource,
+		}
+		if showKeys {
+			row.Key = r.Key
+		} else {
+			row.Key = maskedKey
 		}
 		if len(r.Fingerprint) >= 4 {
 			row.FingerprintPrefix = hex.EncodeToString(r.Fingerprint[:4])
 		}
-		out = append(out, row)
+			if len(r.Fingerprint) >= 4 {
+				row.FingerprintPrefix = hex.EncodeToString(r.Fingerprint[:4])
+			}
+			out = append(out, row)
+		}
+		return out
 	}
-	return out
-}
 
-// newProvidersJSON serializes new provider candidates for the import
-// preview. Keys are masked; a new provider contains the grouped records
-// under it for the user to confirm with one click.
-func newProvidersJSON(nps []*importer.NewProvider) []any {
+	// newProvidersJSON serializes new provider candidates.
+	// Keys are masked; a new provider contains the grouped records
+	// under it for the user to confirm with one click.
+	func newProvidersJSON(nps []*importer.NewProvider) []any {
+		return newProvidersJSONWithKeys(nps, false)
+	}
+
+	// newProvidersJSONWithKeys serializes new provider candidates.
+	// Keys are visible for verification.
+	func newProvidersJSONWithKeys(nps []*importer.NewProvider, showKeys bool) []any {
 	out := make([]any, len(nps))
 	for i, np := range nps {
 		records := make([]any, len(np.Records))
 		for j, r := range np.Records {
-			records[j] = map[string]any{
+			rec := map[string]any{
 				"index":    i*10000 + j,
 				"line":     r.Line,
 				"email":    r.Email,
 				"provider": r.Provider,
-				"key":      maskedKey,
-				"status":   r.Status,
 				"valid":    true,
 			}
+			if showKeys {
+				rec["key"] = r.Key
+			} else {
+				rec["key"] = maskedKey
+			}
+			records[j] = rec
 		}
 		out[i] = map[string]any{
 			"name":    np.Name,
@@ -233,13 +255,13 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id":    sess.ID,
-		"format":        sess.Format,
-		"rows":          rowsJSON(validated),
-		"unmatched":     unmatchedJSON(res.Unmatched),
-		"new_providers": newProvidersJSON(res.NewProviders),
-	})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id":    sess.ID,
+			"format":        sess.Format,
+			"rows":          rowsJSONWithKeys(validated, true),
+			"unmatched":     unmatchedJSON(res.Unmatched),
+			"new_providers": newProvidersJSONWithKeys(res.NewProviders, true),
+		})
 }
 
 // Validate handles POST /api/import/validate. It applies full-replacement

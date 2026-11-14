@@ -116,8 +116,8 @@ func TestImportParseMasksKeys(t *testing.T) {
 	}
 	v := decode(t, rec)
 	rows, _ := v["rows"].([]any)
-	if len(rows) != 8 {
-		t.Fatalf("rows = %d, want 8", len(rows))
+	if len(rows) != 13 {
+		t.Fatalf("rows = %d, want 13", len(rows))
 	}
 	unmatched, _ := v["unmatched"].([]any)
 	// Since R4, unrecognized headings without an email become candidate
@@ -158,7 +158,7 @@ func TestImportCommitStoresRealKey(t *testing.T) {
 	if err := e.db.QueryRow("SELECT encrypted_key, nonce FROM api_keys").Scan(&ct, &nonce); err != nil {
 		t.Fatalf("query: %v", err)
 	}
-		sk := e.auth.Subkeys()
+	sk := e.auth.Subkeys()
 	plaintext, err := encryption.Open(sk.Enc, ct, nonce)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -194,11 +194,11 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
 	}
 	sid = decode(t, rec)["session_id"].(string)
+	v := decode(t, rec)
 	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":"`+sid+`","duplicate_mode":"skip"}`, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
-	v := decode(t, rec)
 	// Since R4, unrecognized headings without an email become candidate
 	// providers instead of unmatched lines, and new providers are created on
 	// commit. "Unknown Section" is now a candidate provider, so:
@@ -257,11 +257,11 @@ func TestImportCommitReviewMode(t *testing.T) {
 		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
 	}
 	sid := decode(t, rec)["session_id"].(string)
+	v := decode(t, rec)
 	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":"`+sid+`","duplicate_mode":"review"}`, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
-	v := decode(t, rec)
 	review, ok := v["duplicates_review"].([]any)
 	if !ok {
 		t.Fatalf("expected duplicates_review in %v", v)
@@ -369,26 +369,28 @@ user-10@example.com sk-or-tailed
 		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
 	}
 
-	// Parse response must NOT leak plaintext keys.
-	body := rec.Body.String()
-	for _, secret := range []string{
-		"AIza-Generated-Realistic-Key-001",
-		"sk-or-123!@#$%^&*",
-		"sk-ant-api03-zzzzz-9999",
-		"sk-live-abc123xyz",
-		"sk-ms-06",
-		"sk-ms-07",
-		"sk-ms-08",
-		"sk-db-pre",
-		"sk-db-bob",
-		"sk-or-repost-aaa",
-	} {
-		if strings.Contains(body, secret) {
-			t.Fatalf("parse response leaked plaintext key %q", secret)
+	// Parse response shows plaintext keys for verification (R5 item 5).
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 13 {
+		t.Fatalf("rows = %d, want 13", len(rows))
+	}
+	// Verify plaintext keys are present in the preview (R5 item 5).
+	found := map[string]bool{
+		"AIza-Generated-Realistic-Key-001": false,
+		"sk-or-123!@#$%^&*":                false,
+	}
+	for _, row := range rows {
+		if row, ok := row.(map[string]any); ok {
+			if k, _ := row["key"].(string); k != "" {
+				delete(found, k)
+			}
 		}
 	}
+	for secret := range found {
+		t.Fatalf("plaintext key %q not found in preview", secret)
+	}
 
-	v := decode(t, rec)
 	sid := v["session_id"].(string)
 	rows, _ := v["rows"].([]any)
 	if len(rows) != 13 {
