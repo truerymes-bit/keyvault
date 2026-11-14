@@ -132,7 +132,7 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 8. Lines that are not provider headings are not "New provider detected". A line with a colon and a value, a slash, or an http word (Content-Type, application/json, HTTP-Referer) is an unrecognized line. Unrecognized lines can be removed or turned into a provider by the user.
 9. Each row has a provider field where the user can pick an existing provider or type a new name. New names are created at import, matched case-insensitively, without duplicates.
 10. "Needs attention" is shown on the review step, not the summary step. The summary shows only the final counts.
-11. Gemini headings are not detected (16 records). The heading lines from the user's real file are listed below in the Log by the user. Make the parser handle them and add each as a test case.
+11. Real heading cases from the user file. Headings: "Gemmini API Keys:" (typo of Gemini), "OpenRouter", "ELEVENLABS", "Jina.ai", "HuggingFace". A heading with no match is offered as a new provider and, when it is within 2 edits of a known provider, shows "Did you mean Gemini?" with a one-click accept. Never correct typos silently. Key-only lines under a provider ("jina_1bf...1Fdj2", "hf_gcX...zFG") become records with an empty email that the user must fill in. ELEVENLABS matches ElevenLabs. Add each of these as a Go test case.
 12. Dashboard reveal for imported keys shows dots (see 1). Reveal shows only the API key, never the email.
 
 ## Log
