@@ -98,41 +98,46 @@ alice@example.com AIza-aaa
 db-alice@example.com sk-db-pre
 `
 
-func TestImportParseMasksKeys(t *testing.T) {
+func TestImportParseRevealsKeys(t *testing.T) {
 	e := newImportEnv(t)
-	// Pre-create a DB record that one file line will duplicate.
-	body := fmt.Sprintf(`{"email":"db-alice@example.com","provider_id":%d,"label":"","key":"sk-db-pre"}`, e.provID)
-	_ = body
 
-	// Seed via direct insert instead of the keys handler (not wired here).
-	// Fingerprint must match HMAC under the same subkey, so use the keys flow:
-	// instead, just parse and check masking on the parse response.
 	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(importDoc)+`,"format":"txt"}`, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(rec.Body.String(), "AIza-aaa") || strings.Contains(rec.Body.String(), "sk-or-ccc") {
-		t.Fatalf("parse response leaks plaintext: %s", rec.Body)
+	// R5 item 5: the preview returns plaintext keys for verification, overriding
+	// amendment 11 for the preview response only.
+	if !strings.Contains(rec.Body.String(), "AIza-aaa") || !strings.Contains(rec.Body.String(), "sk-or-ccc") {
+		t.Fatalf("parse response does not reveal expected plaintext keys: %s", rec.Body)
 	}
 	v := decode(t, rec)
 	rows, _ := v["rows"].([]any)
-	if len(rows) != 13 {
-		t.Fatalf("rows = %d, want 13", len(rows))
+	// Hand-derived from the fixture text (not from program output):
+	// records = 8, unmatched lines = 1, detected provider headings = 4
+	// ("Gemini API Key", "OpenRouter:", "Unknown Section", "Gemini:"). Of the
+	// 4 headings, 3 resolve to known providers (Gemini, OpenRouter) and 1
+	// ("Unknown Section") becomes the single new-provider candidate, so
+	// len(rows)==8, len(unmatched)==1, len(new_providers)==1.
+	if len(rows) != 8 {
+		t.Fatalf("records = %d, want 8", len(rows))
 	}
-	unmatched, _ := v["unmatched"].([]any)
-	// Since R4, unrecognized headings without an email become candidate
-	// providers (e.g. "Unknown Section") instead of unmatched lines.
-	// Only genuinely broken records (e.g. "broken @ line") remain unmatched.
-	if len(unmatched) != 1 {
-		t.Fatalf("unmatched = %d, want 1", len(unmatched))
+	ob, _ := v["unmatched"].([]any)
+	if len(ob) != 1 {
+		t.Fatalf("unmatched lines = %d, want 1 (only the malformed 'broken @ line')", len(ob))
 	}
-	for _, u := range unmatched {
+	for _, u := range ob {
 		text, _ := u.(map[string]any)["text"].(string)
+		// Unmatched lines mask their key-looking tokens: real keys must never
+		// surface on screen.
 		if strings.Contains(text, "sk-zzz") || strings.Contains(text, "sk-or-zzz") {
 			t.Fatalf("unmatched line leaks key: %q", text)
 		}
 	}
-	if v["session_id"] == "" {
+	mp, _ := v["new_providers"].([]any)
+	if len(mp) != 1 {
+		t.Fatalf("detected provider headings = %d, want 1 (Unknown Section)", len(mp))
+	}
+	if sessionID, ok := v["session_id"].(string); !ok || sessionID == "" {
 		t.Fatal("missing session_id")
 	}
 }
@@ -194,11 +199,11 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
 	}
 	sid = decode(t, rec)["session_id"].(string)
-	v := decode(t, rec)
 	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":"`+sid+`","duplicate_mode":"skip"}`, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
+	v := decode(t, rec)
 	// Since R4, unrecognized headings without an email become candidate
 	// providers instead of unmatched lines, and new providers are created on
 	// commit. "Unknown Section" is now a candidate provider, so:
@@ -262,7 +267,8 @@ func TestImportCommitReviewMode(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
-	review, ok := v["duplicates_review"].([]any)
+	cv := decode(t, rec)
+	review, ok := cv["duplicates_review"].([]any)
 	if !ok {
 		t.Fatalf("expected duplicates_review in %v", v)
 	}
@@ -392,7 +398,7 @@ user-10@example.com sk-or-tailed
 	}
 
 	sid := v["session_id"].(string)
-	rows, _ := v["rows"].([]any)
+	rows = v["rows"].([]any)
 	if len(rows) != 13 {
 		t.Logf("DEBUG rows=%d new_providers=%d", len(rows), len(v["new_providers"].([]any)))
 		t.Fatalf("rows = %d, want 13", len(rows))
@@ -404,9 +410,18 @@ user-10@example.com sk-or-tailed
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
 	v = decode(t, rec)
+	t.Logf("DEBUG commit response: %s", rec.Body.String())
+	t.Logf("DEBUG imported=%v imported_type=%T", v["imported"], v["imported"])
 	var count int
 	var err error
 	err = e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 12 {
+		t.Fatalf("api_keys count after end-to-end import = %d, want 12", count)
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
