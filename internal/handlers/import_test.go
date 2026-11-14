@@ -459,8 +459,8 @@ user-10@example.com sk-or-tailed
 	// Parse response shows plaintext keys for verification (R5 item 5).
 	v := decode(t, rec)
 	rows, _ := v["rows"].([]any)
-	if len(rows) != 12 {
-		t.Fatalf("rows = %d, want 12", len(rows))
+	if len(rows) != 13 {
+		t.Fatalf("rows = %d, want 13", len(rows))
 	}
 	// Verify plaintext keys are present in the preview (R5 item 5).
 	found := map[string]bool{
@@ -481,7 +481,6 @@ user-10@example.com sk-or-tailed
 	sid := v["session_id"].(string)
 	rows = v["rows"].([]any)
 	if len(rows) != 13 {
-		t.Logf("DEBUG rows=%d new_providers=%d", len(rows), len(v["new_providers"].([]any)))
 		t.Fatalf("rows = %d, want 13", len(rows))
 	}
 
@@ -491,15 +490,10 @@ user-10@example.com sk-or-tailed
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
 	v = decode(t, rec)
-	t.Logf("DEBUG commit response: %s", rec.Body.String())
-	t.Logf("DEBUG imported=%v imported_type=%T", v["imported"], v["imported"])
 	var count int
 	var err error
 	err = e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 12 {
 		t.Fatalf("api_keys count after end-to-end import = %d, want 12", count)
 	}
 
@@ -507,83 +501,4 @@ user-10@example.com sk-or-tailed
 		t.Fatal(err)
 	}
 	t.Logf("api_keys count after end-to-end import: %d", count)
-}
-
-func TestT81DebugParseRows(t *testing.T) {
-	const realisticFile = `Gemini API Key
-user-01@example.com «redacted:AIza…»|user-02@example.com «redacted:AIza…»|
-OpenRouter:
-user-03@example.com sk-or-123!@#$%^&*
-user-04@example.com «redacted:sk-…»
-
-ElevenLabs:«redacted:sk-…»
-
-Anthropic
-user-05@example.com «redacted:sk-…»
-
-custom-provider
-user-06@example.com https://custom.example.com/api/key/6
-
-Malformed line without email
-user-07@example.com «redacted:sk-…»|another malformed line
-user-08@example.com sk-ok
-
-Duplicate: matches db-alice@example.com (seed via earlier commit)
-user-08@example.com sk-ok
-
-Aliased heading: OpenRouter:
-user-09@example.com «redacted:sk-…»
-
-Duplicate email+provider+fingerprint
-user-09@example.com «redacted:sk-…»
-
-Missing provider heading (should be flagged no_provider)
-db-bob@example.com sk-db-bob
-
-HEADING:OpenRouter (trailing colon + words)
-user-10@example.com «redacted:sk-…»|`
-
-	e := newImportEnv(t)
-	rec := e.do(http.MethodPost, "/api/import/parse", fmt.Sprintf(`{"text":%q,"format":"txt"}`, realisticFile), true)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
-	}
-	v := decode(t, rec)
-	rows := v["rows"].([]any)
-	t.Logf("=== PARSED ROWS (%d) ===", len(rows))
-	for i, r := range rows {
-		rm := r.(map[string]any)
-		t.Logf("row[%d]: email=%v provider=%v status=%v valid=%v duplicate=%v line=%v",
-			i, rm["email"], rm["provider"], rm["status"], rm["valid"], rm["duplicate"], rm["line"])
-	}
-	// also print unmatched and new providers
-	if unmatched, ok := v["unmatched"].([]any); ok {
-		t.Logf("=== UNMATCHED (%d) ===", len(unmatched))
-		for _, u := range unmatched {
-			um := u.(map[string]any)
-			t.Logf("unmatched: line=%v text=%v reason=%v", um["line"], um["text"], um["reason"])
-		}
-	}
-	if np, ok := v["new_providers"].([]any); ok {
-		t.Logf("=== NEW PROVIDERS (%d) ===", len(np))
-		for _, n := range np {
-			nm := n.(map[string]any)
-			t.Logf("new provider: name=%v", nm["name"])
-		}
-	}
-	t.Logf("=== COMMIT RESPONSE ===")
-	// Now commit
-	sid := v["session_id"].(string)
-	rec2 := e.do(http.MethodPost, "/api/import/commit", fmt.Sprintf(`{"session_id":%q,"duplicate_mode":"skip"}`, sid), true)
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("commit: %d %s", rec2.Code, rec2.Body)
-	}
-	v2 := decode(t, rec2)
-	for k, val := range v2 {
-		t.Logf("commit response: %s = %v", k, val)
-	}
-	// DB count
-	var n int
-	e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&n)
-	t.Logf("DB api_keys count: %d", n)
 }

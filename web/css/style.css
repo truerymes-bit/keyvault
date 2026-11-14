@@ -239,6 +239,7 @@ button { cursor: pointer; }
 
 /* hide key values when the toggle is on */
 #view-root.hide-keys .key-field { display: none; }
+#overlay-row.hide-keys .cell[data-field="key"] { display: none; }
 
 /* ---------- toast ---------- */
 #toast {

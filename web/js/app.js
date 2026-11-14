@@ -834,6 +834,10 @@ function openImportModal() {
             <tbody></tbody>
           </table>
         </div>
+        <div class="hide-keys-toggle" style="margin: 8px 0; font-size: 13px; color: var(--muted);">
+          <input id="import-keys-hide" type="checkbox">
+          <span>Hide keys</span>
+        </div>
         <div id="import-unmatched" class="hidden"></div>
         <div id="import-new-providers" class="hidden">
           <div class="field">
@@ -918,6 +922,13 @@ function openImportModal() {
       b.addEventListener('click', () => removeRow(b.dataset.index));
     });
   };
+
+  // Hide keys toggle for the import review step (Step 2 of the import modal).
+  // Real keys are shown by default; checking the box masks only the key cells
+  // in the review table, never the API Keys page.
+  $('#import-keys-hide').addEventListener('change', () => {
+    $('#overlay-row').classList.toggle('hide-keys', $('#import-keys-hide').checked);
+  });
 
   const editCell = (el) => {
     const row = el.closest('tr');
