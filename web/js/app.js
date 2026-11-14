@@ -879,6 +879,7 @@ function openImportModal() {
   const step3Summary = $('#import-step3-summary');
 
   const cellInputs = new Map();
+  const removedIndices = new Set();
   let session = null;
   let lastData = null;
 
@@ -944,13 +945,13 @@ function openImportModal() {
   };
 
   const removeRow = (idx) => {
+    const i = Number(idx);
     const tr = tbody.querySelector(`tr[data-index="${idx}"]`);
     if (!tr) return;
     tr.innerHTML = `<td colspan="5"><span class="small">removed</span></td>`;
     tr.classList.add('removed');
-    cellInputs.set(idx + '_email', '');
-    cellInputs.set(idx + '_provider', '');
-    cellInputs.set(idx + '_key', '');
+    removedIndices.add(i);
+    ['email', 'provider', 'key'].forEach((f) => cellInputs.delete(i + '_' + f));
     scheduleValidate();
   };
 
@@ -959,10 +960,14 @@ function openImportModal() {
       const [idx, field] = k.split('_');
       return { index: Number(idx), [field]: cellInputs.get(k) };
     }).filter((e) => Object.values(e).some((v) => v !== ''));
+    removedIndices.forEach((i) => records.push({ index: i, remove: true }));
     if (!session) return;
     api('/api/import/validate', { method: 'POST', json: { session_id: session, records } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
         session = data.session_id;
+        // The server persisted all edits and reindexed the rows; stale
+        // client-side edits would misapply against the new indices.
+        cellInputs.clear();
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
         renderNewProviders(data.new_providers);
@@ -1072,7 +1077,7 @@ function openImportModal() {
       const provider = tr.querySelector('[data-field="provider"]').textContent.trim();
       const key = tr.querySelector('[data-field="key"]').textContent.trim();
       if (tr.classList.contains('removed')) {
-        rows.push({ index: idx, email: '', provider: '', key: '' });
+        rows.push({ index: idx, remove: true });
       } else if (email || provider || key) {
         rows.push({ index: idx, email, provider, key });
       }

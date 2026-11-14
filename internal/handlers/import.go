@@ -51,12 +51,14 @@ type parseRequest struct {
 
 // importRowEdit is a full replacement edit for one row. Any non-empty Email,
 // Provider, Label or Key field replaces the stored value; the key is never
-// echoed in responses, so editing it means retyping it.
+// echoed in responses, so editing it means retyping it. Remove drops the row
+// from the session records entirely.
 type importRowEdit struct {
 	Index    int    `json:"index"`
 	Email    string `json:"email,omitempty"`
 	Provider string `json:"provider,omitempty"`
 	Key      string `json:"key,omitempty"`
+	Remove   bool   `json:"remove,omitempty"`
 }
 
 type editRequest struct {
@@ -166,14 +168,36 @@ func unmatchedJSON(lines []importer.UnmatchedLine) []importUnmatchedJSON {
 
 // applyEdits returns a new record slice with the given replacements applied.
 // Edits are full replacement values; an index out of range is rejected.
+// An edit with Remove true drops that row from the returned slice, so it is
+// never committed and not counted.
 func applyEdits(records []importer.Record, edits []importRowEdit) ([]importer.Record, error) {
-	out := make([]importer.Record, len(records))
-	copy(out, records)
+	removed := make(map[int]bool)
 	for _, e := range edits {
-		if e.Index < 0 || e.Index >= len(out) {
+		if e.Index < 0 || e.Index >= len(records) {
 			return nil, fmt.Errorf("record index %d out of range", e.Index)
 		}
-		r := &out[e.Index]
+		if e.Remove {
+			removed[e.Index] = true
+		}
+	}
+	out := make([]importer.Record, 0, len(records))
+	remap := make(map[int]int, len(records))
+	for i, rec := range records {
+		if removed[i] {
+			continue
+		}
+		remap[i] = len(out)
+		out = append(out, rec)
+	}
+	for _, e := range edits {
+		if e.Remove {
+			continue
+		}
+		ni, ok := remap[e.Index]
+		if !ok {
+			continue
+		}
+		r := &out[ni]
 		if v := strings.TrimSpace(e.Email); v != "" {
 			r.Email = v
 		}
@@ -265,7 +289,8 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 }
 
 // Validate handles POST /api/import/validate. It applies full-replacement
-// edits (if any) and returns the masked, validated rows.
+// edits (if any) and returns the validated rows with real keys, so an edited
+// key is not replaced by the mask on redraw. Other responses stay masked.
 func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	var req editRequest
 	if err := parseBody(r, &req); err != nil {
@@ -296,7 +321,7 @@ func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sess.ID,
-		"rows":       rowsJSON(validated),
+		"rows":       rowsJSONWithKeys(validated, true),
 		"unmatched":  unmatchedJSON(sess.Unmatched),
 	})
 }

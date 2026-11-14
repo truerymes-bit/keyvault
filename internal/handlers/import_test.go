@@ -142,6 +142,87 @@ func TestImportParseRevealsKeys(t *testing.T) {
 	}
 }
 
+// TestImportValidateReturnsRealKeys: bug fix — validate used to return masked
+// keys, so any edit redrew the table as dots. Validate must return real keys,
+// like parse, while unmatched lines stay masked.
+func TestImportValidateReturnsRealKeys(t *testing.T) {
+	e := newImportEnv(t)
+	doc := "Gemini\nuser@example.com sk-real-key\n"
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(doc)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	row := rows[0].(map[string]any)
+	if row["key"] != "sk-real-key" {
+		t.Fatalf("validate key = %v, want plaintext sk-real-key", row["key"])
+	}
+	// Unmatched lines must stay masked.
+	if ub, _ := v["unmatched"].([]any); len(ub) > 0 {
+		t.Fatalf("unexpected unmatched lines: %v", ub)
+	}
+}
+
+// TestImportRemoveRowNeverCommitted: bug fix — applyEdits ignored empty
+// values, so removed rows were still imported. A remove edit drops the row
+// from the session records; commit must not store or count it.
+func TestImportRemoveRowNeverCommitted(t *testing.T) {
+	e := newImportEnv(t)
+	doc := "Gemini\nkeep@example.com sk-keep\nremove@example.com sk-drop\n"
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(doc)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+
+	// Remove row 1 (remove@example.com).
+	rec = e.do(http.MethodPost, "/api/import/validate",
+		`{"session_id":`+jsonString(sid)+`,"records":[{"index":1,"remove":true}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows after remove = %d, want 1 (%v)", len(rows), v)
+	}
+	if rows[0].(map[string]any)["email"] != "keep@example.com" {
+		t.Fatalf("remaining row = %v, want keep@example.com", rows[0])
+	}
+
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
+	}
+	cv := decode(t, rec)
+	if int(cv["imported"].(float64)) != 1 {
+		t.Fatalf("imported = %v, want 1", cv["imported"])
+	}
+	var n int
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE email = 'remove@example.com'").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("remove@example.com imported %d times, want 0", n)
+	}
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE email = 'keep@example.com'").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("keep@example.com imported %d times, want 1", n)
+	}
+}
+
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
@@ -429,7 +510,7 @@ user-10@example.com sk-or-tailed
 }
 
 func TestT81DebugParseRows(t *testing.T) {
-    const realisticFile = `Gemini API Key
+	const realisticFile = `Gemini API Key
 user-01@example.com «redacted:AIza…»|user-02@example.com «redacted:AIza…»|
 OpenRouter:
 user-03@example.com sk-or-123!@#$%^&*
@@ -462,47 +543,47 @@ db-bob@example.com sk-db-bob
 HEADING:OpenRouter (trailing colon + words)
 user-10@example.com «redacted:sk-…»|`
 
-    e := newImportEnv(t)
-    rec := e.do(http.MethodPost, "/api/import/parse", fmt.Sprintf(`{"text":%q,"format":"txt"}`, realisticFile), true)
-    if rec.Code != http.StatusOK {
-        t.Fatalf("parse: %d %s", rec.Code, rec.Body)
-    }
-    v := decode(t, rec)
-    rows := v["rows"].([]any)
-    t.Logf("=== PARSED ROWS (%d) ===", len(rows))
-    for i, r := range rows {
-        rm := r.(map[string]any)
-        t.Logf("row[%d]: email=%v provider=%v status=%v valid=%v duplicate=%v line=%v",
-            i, rm["email"], rm["provider"], rm["status"], rm["valid"], rm["duplicate"], rm["line"])
-    }
-    // also print unmatched and new providers
-    if unmatched, ok := v["unmatched"].([]any); ok {
-        t.Logf("=== UNMATCHED (%d) ===", len(unmatched))
-        for _, u := range unmatched {
-            um := u.(map[string]any)
-            t.Logf("unmatched: line=%v text=%v reason=%v", um["line"], um["text"], um["reason"])
-        }
-    }
-    if np, ok := v["new_providers"].([]any); ok {
-        t.Logf("=== NEW PROVIDERS (%d) ===", len(np))
-        for _, n := range np {
-            nm := n.(map[string]any)
-            t.Logf("new provider: name=%v", nm["name"])
-        }
-    }
-    t.Logf("=== COMMIT RESPONSE ===")
-    // Now commit
-    sid := v["session_id"].(string)
-    rec2 := e.do(http.MethodPost, "/api/import/commit", fmt.Sprintf(`{"session_id":%q,"duplicate_mode":"skip"}`, sid), true)
-    if rec2.Code != http.StatusOK {
-        t.Fatalf("commit: %d %s", rec2.Code, rec2.Body)
-    }
-    v2 := decode(t, rec2)
-    for k, val := range v2 {
-        t.Logf("commit response: %s = %v", k, val)
-    }
-    // DB count
-    var n int
-    e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&n)
-    t.Logf("DB api_keys count: %d", n)
+	e := newImportEnv(t)
+	rec := e.do(http.MethodPost, "/api/import/parse", fmt.Sprintf(`{"text":%q,"format":"txt"}`, realisticFile), true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows := v["rows"].([]any)
+	t.Logf("=== PARSED ROWS (%d) ===", len(rows))
+	for i, r := range rows {
+		rm := r.(map[string]any)
+		t.Logf("row[%d]: email=%v provider=%v status=%v valid=%v duplicate=%v line=%v",
+			i, rm["email"], rm["provider"], rm["status"], rm["valid"], rm["duplicate"], rm["line"])
+	}
+	// also print unmatched and new providers
+	if unmatched, ok := v["unmatched"].([]any); ok {
+		t.Logf("=== UNMATCHED (%d) ===", len(unmatched))
+		for _, u := range unmatched {
+			um := u.(map[string]any)
+			t.Logf("unmatched: line=%v text=%v reason=%v", um["line"], um["text"], um["reason"])
+		}
+	}
+	if np, ok := v["new_providers"].([]any); ok {
+		t.Logf("=== NEW PROVIDERS (%d) ===", len(np))
+		for _, n := range np {
+			nm := n.(map[string]any)
+			t.Logf("new provider: name=%v", nm["name"])
+		}
+	}
+	t.Logf("=== COMMIT RESPONSE ===")
+	// Now commit
+	sid := v["session_id"].(string)
+	rec2 := e.do(http.MethodPost, "/api/import/commit", fmt.Sprintf(`{"session_id":%q,"duplicate_mode":"skip"}`, sid), true)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec2.Code, rec2.Body)
+	}
+	v2 := decode(t, rec2)
+	for k, val := range v2 {
+		t.Logf("commit response: %s = %v", k, val)
+	}
+	// DB count
+	var n int
+	e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&n)
+	t.Logf("DB api_keys count: %d", n)
 }
