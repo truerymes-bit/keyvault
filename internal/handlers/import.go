@@ -160,7 +160,12 @@ func applyEdits(records []importer.Record, edits []importRowEdit) ([]importer.Re
 			r.Status = importer.StatusOK
 		}
 		if v := strings.TrimSpace(e.Key); v != "" {
-			r.Key = v
+			// Never overwrite the real key with the masked placeholder.
+			// The import session holds the real key; the preview masks all
+			// keys. Only apply an edit key if it is distinct from the mask.
+			if v != maskedKey {
+				r.Key = v
+			}
 		}
 	}
 	return out, nil

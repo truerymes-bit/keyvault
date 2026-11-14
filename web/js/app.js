@@ -297,6 +297,12 @@ async function renderKeys() {
         <button class="btn" id="keys-add-key">Add key</button>
         <button class="btn primary" id="keys-import">Import</button>
       </div>
+      <div class="stat-row">
+        <div class="stat-card" style="flex:1;">
+          <div class="stat-value" id="summary"></div>
+          <div class="stat-label">Total keys</div>
+        </div>
+      </div>
     </div>`;
 
   const addKeyBtn = document.getElementById('keys-add-key');
@@ -307,6 +313,7 @@ async function renderKeys() {
   const countEl = $('#key-search-count');
   const listEl = document.createElement('div');
   listEl.id = 'key-list';
+  const summary = $('#summary');
 
   const applyFilter = (q) => {
     const rows = listEl.querySelectorAll('.key-row');
@@ -808,6 +815,7 @@ function openImportModal() {
           <textarea id="import-custom" rows="2" placeholder="MyProvider"></textarea>
         </div>
         <div class="btn-row">
+          <button class="btn" id="import-cancel-1">Cancel</button>
           <button class="btn primary" id="import-next-1">Next</button>
         </div>
       </div>
@@ -833,6 +841,7 @@ function openImportModal() {
         <div id="import-dup-summary" class="hidden"></div>
         <div class="btn-row">
           <button class="btn" id="import-back-2">Back</button>
+          <button class="btn" id="import-cancel-2">Cancel</button>
           <button class="btn primary" id="import-next-2">Next</button>
         </div>
       </div>
@@ -840,6 +849,7 @@ function openImportModal() {
       <div class="wizard-panel hidden" data-step="3">
         <div id="import-step3-summary" class="summary-box"></div>
         <div class="btn-row">
+          <button class="btn" id="import-cancel-3">Cancel</button>
           <button class="btn primary" id="import-close-3">Close</button>
         </div>
       </div>
@@ -1032,6 +1042,18 @@ function openImportModal() {
       .catch((err) => toast(err.message, 'error'));
   });
 
+  $('#import-cancel-1').addEventListener('click', () => {
+    $('#overlay-row').innerHTML = '';
+    $('#overlay-backdrop').hidden = true;
+    renderKeys();
+  });
+
+  $('#import-cancel-2').addEventListener('click', () => {
+    $('#overlay-row').innerHTML = '';
+    $('#overlay-backdrop').hidden = true;
+    renderKeys();
+  });
+
   $('#import-back-2').addEventListener('click', () => showStep(1));
 
   $('#import-next-2').addEventListener('click', () => {
@@ -1065,9 +1087,15 @@ function openImportModal() {
       .catch((err) => toast(err.message, 'error'));
   });
 
-  $('#import-close-3').addEventListener('click', () => {
-    $('#overlay-backdrop').hidden = true;
+  $('#import-cancel-3').addEventListener('click', () => {
     $('#overlay-row').innerHTML = '';
+    $('#overlay-backdrop').hidden = true;
+    renderKeys();
+  });
+
+  $('#import-close-3').addEventListener('click', () => {
+    $('#overlay-row').innerHTML = '';
+    $('#overlay-backdrop').hidden = true;
     renderKeys();
   });
 }
@@ -1444,6 +1472,7 @@ async function init() {
     const st = await api('/api/auth/status');
     state.setup = !!st.setup;
     state.unlocked = !!st.unlocked;
+    if (st.csrf_token) state.csrf = st.csrf_token;
   } catch (_) {
     state.setup = false;
     state.unlocked = false;

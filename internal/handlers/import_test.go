@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"keyvault/internal/database"
+	"keyvault/internal/encryption"
 	"keyvault/internal/importer"
 	"keyvault/internal/security"
 	// database kept for Open
@@ -25,6 +26,7 @@ type importTestEnv struct {
 	cookie *http.Cookie
 	csrf   string
 	provID int64
+	auth   *security.Auth
 }
 
 func newImportEnv(t *testing.T) *importTestEnv {
@@ -57,7 +59,7 @@ func newImportEnv(t *testing.T) *importTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &importTestEnv{t: t, mux: mux, db: db, cookie: rec.Result().Cookies()[0], csrf: s.CSRF, provID: provID}
+	return &importTestEnv{t: t, mux: mux, db: db, cookie: rec.Result().Cookies()[0], csrf: s.CSRF, provID: provID, auth: auth}
 }
 
 func (e *importTestEnv) do(method, path, body string, withCSRF bool) *httptest.ResponseRecorder {
@@ -138,6 +140,32 @@ func TestImportParseMasksKeys(t *testing.T) {
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+func TestImportCommitStoresRealKey(t *testing.T) {
+	e := newImportEnv(t)
+	doc := "Gemini\nuser@example.com sk-test123\n"
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(doc)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":"`+sid+`","duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
+	}
+	var ct, nonce []byte
+	if err := e.db.QueryRow("SELECT encrypted_key, nonce FROM api_keys").Scan(&ct, &nonce); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+		sk := e.auth.Subkeys()
+	plaintext, err := encryption.Open(sk.Enc, ct, nonce)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if string(plaintext) != "sk-test123" {
+		t.Fatalf("revealed key = %q, want %q", string(plaintext), "sk-test123")
+	}
 }
 
 func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
