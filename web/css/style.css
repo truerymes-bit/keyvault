@@ -227,6 +227,19 @@ button { cursor: pointer; }
 }
 .key-field code { font-family: inherit; font-size: inherit; background: none; border: none; padding: 0; color: inherit; }
 
+/* toggle for the key-value column */
+.hide-keys-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.hide-keys-toggle input {
+  width: 16px; height: 16px; accent-color: var(--accent);
+}
+.hide-keys-toggle input:checked + span { color: var(--text); }
+
+/* hide key values when the toggle is on */
+#view-root.hide-keys .key-field { display: none; }
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);

@@ -293,6 +293,10 @@ async function renderKeys() {
         <input id="key-search" placeholder="Search email, provider or label…" autocomplete="off">
         <span id="key-search-count" class="small"></span>
       </div>
+      <label class="hide-keys-toggle">
+        <input id="keys-hide" type="checkbox">
+        <span>Hide keys</span>
+      </label>
       <div class="btn-row" style="justify-content:flex-end;">
         <button class="btn" id="keys-add-key">Add key</button>
         <button class="btn primary" id="keys-import">Import</button>
@@ -333,6 +337,9 @@ async function renderKeys() {
   searchInput.addEventListener('input', () => {
     clearTimeout(searchInput._t);
     searchInput._t = setTimeout(() => applyFilter(searchInput.value), 200);
+  });
+  $('#keys-hide').addEventListener('change', () => {
+    $('#view-root').classList.toggle('hide-keys', $('#keys-hide').checked);
   });
 
   try {
