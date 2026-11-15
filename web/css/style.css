@@ -354,3 +354,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 }
 .provider-select { width: 100%; }
 .inline-editing { width: 120px; }
+
+/* review-step needs-attention banner */
+.attention-banner {
+  padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  background: rgba(239, 68, 68, .12); color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, .35);
+}

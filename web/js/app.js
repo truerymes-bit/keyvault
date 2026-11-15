@@ -825,6 +825,7 @@ function openImportModal() {
 
       <div class="wizard-panel hidden" data-step="2">
         <div class="wizard-scroll">
+          <div id="import-attention" class="attention-banner hidden"></div>
           <div class="table-wrap">
             <table id="import-table">
               <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
@@ -879,6 +880,8 @@ function openImportModal() {
   const newProvEl = $('#import-new-providers');
   const dupSummary = $('#import-dup-summary');
   const step3Summary = $('#import-step3-summary');
+  const attentionEl = $('#import-attention');
+  const importBtn = $('#import-next-2');
 
   const cellInputs = new Map();
   const removedIndices = new Set();
@@ -932,6 +935,17 @@ function openImportModal() {
     });
   };
 
+  // Plain-words reasons a row is blocked, derived from the server's errors
+  // and the row fields. Used on the review step, never in the summary.
+  const reasonsFor = (r) => {
+    const reasons = [];
+    const errText = Array.isArray(r.errors) ? r.errors.join(' ') : '';
+    if (!r.email || errText.includes('email')) reasons.push('missing email');
+    if (!r.key || errText.includes('key')) reasons.push('missing key');
+    if (!r.provider || errText.includes('provider')) reasons.push('missing provider');
+    return reasons;
+  };
+
   const renderRows = (rows) => {
     tbody.innerHTML = '';
     if (!Array.isArray(rows)) return;
@@ -948,11 +962,15 @@ function openImportModal() {
       tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
       tr.dataset.index = r.index;
       const keyCell = r.key ? `<span class="cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
+      const statusHTML = !r.valid
+        ? `Needs attention: ${reasonsFor(r).join(', ')}`
+        : (r.duplicate ? 'Duplicate (skipped)' : escapeHtml(r.status));
+      const statusClass = !r.valid ? 'invalid' : (r.duplicate ? 'duplicate' : r.status);
       tr.innerHTML = `
         <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
         <td>${providerSelectHTML(r)}</td>
         <td>${keyCell}</td>
-        <td class="status ${r.duplicate ? 'duplicate' : r.status}">${r.duplicate ? 'Duplicate (skipped)' : escapeHtml(r.status)}</td>
+        <td class="status ${statusClass}">${statusHTML}</td>
         <td><button class="btn tiny danger" data-act="remove" data-index="${r.index}">✕</button></td>`;
       tbody.appendChild(tr);
     }
@@ -969,6 +987,19 @@ function openImportModal() {
         scheduleValidate();
       });
     });
+
+    // Review-step attention banner and the Import button counts. Duplicates
+    // are skipped by default, so they are neither imported nor blocked.
+    const blocked = rows.filter((r) => !r.valid).length;
+    if (blocked) {
+      attentionEl.classList.remove('hidden');
+      attentionEl.textContent = `${blocked} row${blocked !== 1 ? 's' : ''} need${blocked !== 1 ? '' : 's'} attention and will not be imported.`;
+    } else {
+      attentionEl.classList.add('hidden');
+      attentionEl.textContent = '';
+    }
+    const importable = rows.filter((r) => r.valid && !r.duplicate).length;
+    importBtn.textContent = `Import ${importable} record${importable !== 1 ? 's' : ''}` + (blocked ? ` (${blocked} blocked)` : '');
   };
 
   // Hide keys toggle for the import review step (Step 2 of the import modal).
@@ -1233,7 +1264,6 @@ function openImportModal() {
           <div class="summary-row"><strong>Imported:</strong> ${data.imported}</div>
           <div class="summary-row"><strong>Skipped:</strong> ${data.skipped}</div>
           <div class="summary-row"><strong>Duplicates:</strong> ${data.duplicates}</div>
-          <div class="summary-row"><strong>Needs attention:</strong> ${data.attention}</div>
           <div class="summary-row"><strong>Providers created:</strong> ${data.providers_created}</div>
         `;
         showStep3();
