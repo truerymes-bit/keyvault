@@ -30,7 +30,7 @@ If you are about to run out of budget mid-task, commit with the message `WIP T2.
 These override `docs/spec.md` where they conflict.
 
 1. **Embedding.** Frontend files are embedded in the binary through `web/embed.go` (package `web`, `go:embed`). `go:embed` cannot reach outside its own package directory, so `main.go` imports `web`.
-2. **Fingerprint column.** `api_keys` gets `fingerprint BLOB NOT NULL`: HMAC-SHA256 of the plaintext key under the HMAC subkey. Index on `(email, provider_id, fingerprint)`.
+2. **Fingerprint column.** `api_keys` gets `fingerprint BLOB NOT NULL`: HMAC-SHA256 of the plaintext key under the HMAC subkey. Index on `(email, fingerprint)`. A record is a duplicate when its email and key fingerprint match an existing key under any provider, or match another record in the same import. The provider never takes part in the match. The import review step marks duplicates and skips them by default.
 3. **Key hierarchy.** The Argon2id output is the master key. Derive subkeys with HKDF-SHA256 using distinct info strings: `keyvault/enc`, `keyvault/hmac`, `keyvault/backup`. Never use the master key directly.
 4. **Password check.** `settings` stores a verifier: a known constant encrypted with the enc subkey. Unlock succeeds if it decrypts.
 5. **Secrets in settings.** The Google client secret and refresh token are encrypted with the enc subkey. Same for any other credential-like value.
