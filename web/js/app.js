@@ -884,15 +884,58 @@ function openImportModal() {
   const removedIndices = new Set();
   let session = null;
   let lastData = null;
+  let lastRows = [];
+  let providerNames = [];
 
   const masked = (k) => (k || '').replace(/\S/g, '•');
+
+  const loadProviders = () => api('/api/providers')
+    .then((ps) => { providerNames = (ps || []).map((p) => p.name); })
+    .catch(() => {});
+  loadProviders();
 
   const showStep2 = () => showStep(2);
   const showStep3 = () => showStep(3);
 
+  // Provider dropdown for one row: every existing provider plus
+  // "New provider...". A provider the file named that is not in the list is
+  // added as the selected option so the value is never lost.
+  const providerSelectHTML = (r) => {
+    const known = r.provider && providerNames.includes(r.provider);
+    const names = r.provider && !known ? [r.provider, ...providerNames] : providerNames;
+    const opts = names.map((n) => `<option value="${escapeHtml(n)}"${n === r.provider ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+    const placeholder = r.provider ? '' : '<option value="" selected>Select provider…</option>';
+    return `<select class="provider-select" data-index="${r.index}">${placeholder}${opts}<option value="__new__">New provider...</option></select>`;
+  };
+
+  const showNewProviderInput = (sel) => {
+    const idx = sel.dataset.index;
+    const input = document.createElement('input');
+    input.className = 'inline-editing';
+    input.placeholder = 'New provider name';
+    input.dataset.index = idx;
+    sel.replaceWith(input);
+    input.focus();
+    const commit = () => {
+      const name = input.value.trim();
+      if (name) {
+        cellInputs.set(idx + '_provider', name);
+        scheduleValidate();
+      } else {
+        renderRows(lastRows);
+      }
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { renderRows(lastRows); }
+    });
+  };
+
   const renderRows = (rows) => {
     tbody.innerHTML = '';
     if (!Array.isArray(rows)) return;
+    lastRows = rows;
     // Rows needing attention appear first; valid rows after.
     const sorted = [...rows].sort((a, b) => {
       const aAtt = a.valid ? 0 : 1;
@@ -907,7 +950,7 @@ function openImportModal() {
       const keyCell = r.key ? `<span class="cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
       tr.innerHTML = `
         <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
-        <td><span class="cell" data-field="provider">${escapeHtml(r.provider)}</span></td>
+        <td>${providerSelectHTML(r)}</td>
         <td>${keyCell}</td>
         <td class="status ${r.duplicate ? 'duplicate' : r.status}">${r.duplicate ? 'Duplicate (skipped)' : escapeHtml(r.status)}</td>
         <td><button class="btn tiny danger" data-act="remove" data-index="${r.index}">✕</button></td>`;
@@ -918,6 +961,13 @@ function openImportModal() {
     });
     tbody.querySelectorAll('[data-act="remove"]').forEach((b) => {
       b.addEventListener('click', () => removeRow(b.dataset.index));
+    });
+    tbody.querySelectorAll('.provider-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        if (sel.value === '__new__') { showNewProviderInput(sel); return; }
+        cellInputs.set(sel.dataset.index + '_provider', sel.value);
+        scheduleValidate();
+      });
     });
   };
 
@@ -1064,8 +1114,8 @@ function openImportModal() {
     // when the user clicks the suggestion.
     const edits = [];
     tbody.querySelectorAll('tr.import-row').forEach((tr) => {
-      const cell = tr.querySelector('[data-field="provider"]');
-      if (cell && cell.textContent.trim() === np.name) {
+      const cell = tr.querySelector('.provider-select');
+      if (cell && cell.value === np.name) {
         edits.push({ index: Number(tr.dataset.index), provider: np.suggestion });
       }
     });
@@ -1159,9 +1209,15 @@ function openImportModal() {
     const rows = [];
     tbody.querySelectorAll('tr.import-row').forEach((tr) => {
       const idx = Number(tr.dataset.index);
-      const email = tr.querySelector('[data-field="email"]').textContent.trim();
-      const provider = tr.querySelector('[data-field="provider"]').textContent.trim();
-      const key = tr.querySelector('[data-field="key"]').textContent.trim();
+      const readField = (sel) => {
+        const el = tr.querySelector(sel);
+        if (!el) return '';
+        if (el.tagName === 'SELECT' || el.tagName === 'INPUT') return el.value.trim();
+        return el.textContent.trim();
+      };
+      const email = readField('[data-field="email"]');
+      const provider = readField('.provider-select, [data-field="provider"]');
+      const key = readField('[data-field="key"]');
       if (tr.classList.contains('removed')) {
         rows.push({ index: idx, remove: true });
       } else if (email || provider || key) {
@@ -1172,6 +1228,7 @@ function openImportModal() {
     api('/api/import/commit', { method: 'POST', json: { session_id: session, records: rows, duplicate_mode: 'skip' } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
         lastData = data;
+        loadProviders();
         step3Summary.innerHTML = `
           <div class="summary-row"><strong>Imported:</strong> ${data.imported}</div>
           <div class="summary-row"><strong>Skipped:</strong> ${data.skipped}</div>

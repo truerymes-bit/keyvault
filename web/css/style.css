@@ -345,3 +345,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .overlay-card.import-modal .import-wizard { flex: 1; min-height: 0; }
 .overlay-card.import-modal .wizard-panel:not(.hidden) { flex: 1; min-height: 0; }
 .wizard-panel .wizard-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* provider dropdown and inline editors in the review table */
+.provider-select, .inline-editing {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 6px; font-size: 13px; font-family: inherit;
+}
+.provider-select { width: 100%; }
+.inline-editing { width: 120px; }
