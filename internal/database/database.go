@@ -9,12 +9,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
+//go:embed schema.sql schema_v2.sql
 var schemaFS embed.FS
 
 // migrations are applied in order; index i migrates user_version from i to i+1.
 var migrations = []string{
 	mustRead("schema.sql"),
+	mustRead("schema_v2.sql"),
 }
 
 func mustRead(name string) string {
