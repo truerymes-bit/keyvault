@@ -172,6 +172,76 @@ func (h *ProvidersHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+// Merge handles POST /api/providers/{id}/merge. Every key of the provider in
+// the path is reassigned to the provider named by the "into" field (matched
+// case-insensitively), then the source provider is deleted. Used when a
+// rename collides with an existing name and the user chooses to merge.
+func (h *ProvidersHandler) Merge(w http.ResponseWriter, r *http.Request) {
+	id, ok := providerID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Into string `json:"into"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	into := strings.TrimSpace(req.Into)
+	if into == "" {
+		writeErr(w, http.StatusBadRequest, "into must not be empty")
+		return
+	}
+	var sourceCount int
+	if err := h.DB.QueryRow("SELECT count(*) FROM providers WHERE id = ?", id).Scan(&sourceCount); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if sourceCount == 0 {
+		writeErr(w, http.StatusNotFound, "provider not found")
+		return
+	}
+	var targetID int64
+	err := h.DB.QueryRow("SELECT id FROM providers WHERE name = ? COLLATE NOCASE", into).Scan(&targetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "target provider not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if targetID == id {
+		writeErr(w, http.StatusBadRequest, "cannot merge a provider into itself")
+		return
+	}
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("UPDATE api_keys SET provider_id = ? WHERE provider_id = ?", targetID, id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if _, err := tx.Exec("DELETE FROM providers WHERE id = ?", id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	p, err := scanProvider(h.DB.QueryRow(providerSelect+" WHERE p.id = ?", targetID))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
 // Delete handles DELETE /api/providers/{id}. Returns 409 with the key count
 // when keys still reference the provider.
 func (h *ProvidersHandler) Delete(w http.ResponseWriter, r *http.Request) {

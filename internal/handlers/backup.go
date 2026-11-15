@@ -122,8 +122,9 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 
 	dir := filepath.Dir(h.DBPath)
 	rollbackPath := dir + "/keyvault.db.rollback." + time.Now().UTC().Format("20060102-150405")
-	if err := os.WriteFile(rollbackPath, currentDBBytes(h.DB, h.DBPath), 0o600); err != nil {
-		writeErr(w, http.StatusInternalServerError, "create rollback copy: "+err.Error())
+	// Snapshot the current DB using VACUUM INTO for consistency.
+	if _, err := h.DB.Exec("VACUUM INTO ?", rollbackPath); err != nil {
+		writeErr(w, http.StatusInternalServerError, "create rollback snapshot: "+err.Error())
 		return
 	}
 

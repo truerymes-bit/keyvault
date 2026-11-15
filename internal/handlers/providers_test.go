@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -43,6 +44,7 @@ func newProvidersEnv(t *testing.T) *providersTestEnv {
 	mux.Handle("GET /api/providers/{id}", protected(h.Get))
 	mux.Handle("POST /api/providers", protected(h.Create))
 	mux.Handle("PUT /api/providers/{id}", protected(h.Update))
+	mux.Handle("POST /api/providers/{id}/merge", protected(h.Merge))
 	mux.Handle("DELETE /api/providers/{id}", protected(h.Delete))
 	mux.Handle("PUT /api/providers/{id}/notes", protected(h.UpdateNotes))
 
@@ -220,5 +222,117 @@ func TestProvidersLockedRefused(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("locked: %d, want 401", rec.Code)
+	}
+}
+
+// seedProvider inserts a provider plus n keys and returns the provider id.
+func seedProvider(t *testing.T, db *sql.DB, name string, n int) int64 {
+	t.Helper()
+	res, err := db.Exec("INSERT INTO providers (name) VALUES (?)", name)
+	if err != nil {
+		t.Fatalf("insert provider %s: %v", name, err)
+	}
+	id, _ := res.LastInsertId()
+	for i := 0; i < n; i++ {
+		_, err := db.Exec(
+			"INSERT INTO api_keys (email, provider_id, encrypted_key, nonce, fingerprint) VALUES (?, ?, x'01', x'02', x'03')",
+			fmt.Sprintf("user-%s-%d@example.com", name, i), id)
+		if err != nil {
+			t.Fatalf("insert key %d for %s: %v", i, name, err)
+		}
+	}
+	return id
+}
+
+func TestMergeProviderMovesKeysAndDeletesSource(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	gemini := seedProvider(t, db, "Gemini", 1) // 1 existing key
+	openai := seedProvider(t, db, "OpenAI", 2) // 2 keys to move
+	_ = gemini
+
+	auth := security.NewAuth(db)
+	if err := auth.Setup("pw"); err != nil {
+		t.Fatal(err)
+	}
+	sm := security.NewSessionManager(auth, 15*time.Minute)
+	h := &ProvidersHandler{DB: db}
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/providers/{id}/merge", RequireSession(sm, http.HandlerFunc(h.Merge)))
+	mux.Handle("GET /api/providers/{id}", RequireSession(sm, http.HandlerFunc(h.Get)))
+
+	rec := httptest.NewRecorder()
+	s, _ := sm.Create(rec)
+	cookie := rec.Result().Cookies()[0]
+
+	// Case-insensitive target name.
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("http://x/api/providers/%d/merge", openai),
+		strings.NewReader(`{"into":"gemini"}`))
+	req.AddCookie(cookie)
+	req.Header.Set(security.CSRFHeader, s.CSRF)
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("merge: %d %s", rec2.Code, rec2.Body)
+	}
+	var target providerJSON
+	if err := json.Unmarshal(rec2.Body.Bytes(), &target); err != nil {
+		t.Fatalf("decode target: %v", err)
+	}
+	if target.KeyCount != 3 {
+		t.Fatalf("target key_count = %d, want 3 (1 existing + 2 moved)", target.KeyCount)
+	}
+
+	// The source provider is gone.
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("http://x/api/providers/%d", openai), nil)
+	req.AddCookie(cookie)
+	rec3 := httptest.NewRecorder()
+	mux.ServeHTTP(rec3, req)
+	if rec3.Code != http.StatusNotFound {
+		t.Fatalf("source after merge: %d, want 404", rec3.Code)
+	}
+
+	// Every key now points at the target.
+	var orphans int
+	if err := db.QueryRow("SELECT count(*) FROM api_keys WHERE provider_id <> ?", gemini).Scan(&orphans); err != nil {
+		t.Fatal(err)
+	}
+	if orphans != 0 {
+		t.Fatalf("keys not reassigned: %d", orphans)
+	}
+}
+
+func TestMergeProviderErrors(t *testing.T) {
+	e := newProvidersEnv(t)
+	rec := e.do(http.MethodPost, "/api/providers", `{"name":"Gemini"}`, true)
+	var gemini providerJSON
+	_ = json.Unmarshal(rec.Body.Bytes(), &gemini)
+
+	// Unknown target.
+	rec = e.do(http.MethodPost, fmt.Sprintf("/api/providers/%d/merge", gemini.ID),
+		`{"into":"NoSuchProvider"}`, true)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown target: %d, want 404", rec.Code)
+	}
+
+	// Missing target name.
+	rec = e.do(http.MethodPost, fmt.Sprintf("/api/providers/%d/merge", gemini.ID), `{"into":"  "}`, true)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty into: %d, want 400", rec.Code)
+	}
+
+	// Merging into itself.
+	rec = e.do(http.MethodPost, fmt.Sprintf("/api/providers/%d/merge", gemini.ID), `{"into":"Gemini"}`, true)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("self merge: %d, want 400", rec.Code)
+	}
+
+	// Unknown source provider.
+	rec = e.do(http.MethodPost, "/api/providers/999999/merge", `{"into":"Gemini"}`, true)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown source: %d, want 404", rec.Code)
 	}
 }

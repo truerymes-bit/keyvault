@@ -64,9 +64,20 @@ async function api(path, options = {}) {
       const data = await res.json();
       if (data.error) msg = data.error;
     } catch (_) { /* keep default */ }
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
   return json ? res.json() : null;
+}
+
+// The session expired or the vault was locked: drop the session locally and
+// show the unlock overlay. Used by every request path that can hit a 401.
+function lockVault() {
+  state.unlocked = false;
+  state.csrf = '';
+  $('#status-label').textContent = 'Locked';
+  showAuthModal();
 }
 
 /* ---------- overlay scaffolding ---------- */
@@ -154,11 +165,10 @@ async function renderDashboard() {
       </div>
       <div class="panel-grid">
         ${table(resp.recent_keys, 'Recently added keys', 'created')}
-        ${table(resp.recent_modified, 'Recently modified', 'updated')}
       </div>
     </div>`;
 
-  // Allow clicking any recent key row (in either table) to reveal the key.
+  // Allow clicking any recent key row to reveal the key.
   $('#view-root').addEventListener('click', (e) => {
     const row = e.target.closest('.key-row');
     if (row) openRevealModal(Number(row.dataset.id));
@@ -554,47 +564,146 @@ async function renderProviders() {
   root.innerHTML = `
     <div class="view">
       <h1>Providers</h1>
-      <p class="lede">Setup notes shared by every key of a provider.</p>
-      <div id="providers-list"></div>
+      <p class="lede">Every registered provider, its keys, and the setup notes shared by those keys.</p>
+      <div id="providers-list" class="providers-grid"></div>
     </div>`;
   const list = $('#providers-list');
+  let providers;
   try {
-    const providers = await api('/api/providers');
-    if (!providers.length) {
-      list.innerHTML = `<div class="empty">No providers yet. <a href="#/keys/new">Add an API key</a> first.</div>`;
-      return;
-    }
-    for (const p of providers) {
-      const card = document.createElement('div');
-      card.className = 'panel';
-      card.innerHTML = `
-        <div class="provider-head">
-          <span class="provider-name">${escapeHtml(p.name)}</span>
-          <span class="badge">${p.key_count} key${p.key_count !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="small">${escapeHtml(p.emails && p.emails.length ? p.emails.join(', ') : '—')}</div>
-        <div class="field">
-          <label class="small">Setup notes</label>
-          <textarea id="notes-${p.id}" rows="4" placeholder="Provider setup instructions…">${escapeHtml(p.notes)}</textarea>
-        </div>
-        <div class="footer" style="justify-content:flex-end;">
-          <button class="btn" data-act="cancel-${p.id}">Cancel</button>
-          <button class="btn primary" data-act="save-${p.id}">Save notes</button>
-        </div>`;
-      list.appendChild(card);
-      card.querySelector(`[data-act="save-${p.id}"]`).addEventListener('click', async () => {
-        const notes = card.querySelector(`#notes-${p.id}`).value;
-        try {
-          await api('/api/providers/' + p.id + '/notes', { method: 'PUT', json: { notes } }, { 'X-CSRF-Token': state.csrf });
-          toast('Notes saved');
-        } catch (err) {
-          toast(err.message, 'error');
-        }
-      });
-      card.querySelector(`[data-act="cancel-${p.id}"]`).addEventListener('click', () => card.remove());
-    }
+    providers = await api('/api/providers');
   } catch (err) {
-    root.innerHTML += `<div class="empty">Could not load providers: ${escapeHtml(err.message)}</div>`;
+    list.innerHTML = `<div class="empty">Could not load providers: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  if (!Array.isArray(providers)) { lockVault(); return; }
+  if (!providers.length) {
+    list.innerHTML = `<div class="empty">No providers yet. <a href="#/keys/new">Add an API key</a> first.</div>`;
+    return;
+  }
+  for (const p of providers) {
+    const card = document.createElement('div');
+    card.className = 'panel provider-card';
+    card.innerHTML = `
+      <div class="provider-head">
+        <span class="provider-name" data-role="name">${escapeHtml(p.name)}</span>
+        <span class="badge">${p.key_count} key${p.key_count !== 1 ? 's' : ''}</span>
+        <button class="btn tiny" data-act="rename">Rename</button>
+      </div>
+      <div class="small provider-emails">${escapeHtml(p.emails && p.emails.length ? p.emails.join(', ') : '—')}</div>
+      <div class="field">
+        <label class="small" for="notes-${p.id}">Setup notes</label>
+        <textarea id="notes-${p.id}" rows="4" placeholder="Provider setup instructions…">${escapeHtml(p.notes)}</textarea>
+      </div>
+      <div id="provider-msg-${p.id}" class="error" role="alert" hidden></div>
+      <div class="footer" style="justify-content:flex-end;">
+        <button class="btn" data-act="reset-notes">Reset notes</button>
+        <button class="btn primary" data-act="save-notes">Save notes</button>
+      </div>`;
+    list.appendChild(card);
+
+    const msg = card.querySelector(`#provider-msg-${p.id}`);
+    const showMsg = (html) => { msg.innerHTML = html; msg.hidden = false; };
+    const clearMsg = () => { msg.innerHTML = ''; msg.hidden = true; };
+
+    card.querySelector('[data-act="save-notes"]').addEventListener('click', async () => {
+      clearMsg();
+      const res = await api('/api/providers/' + p.id + '/notes', {
+        method: 'PUT',
+        json: { notes: card.querySelector('#notes-' + p.id).value },
+      });
+      if (res && res.locked) { lockVault(); return; }
+      toast('Notes saved');
+    });
+
+    card.querySelector('[data-act="reset-notes"]').addEventListener('click', () => {
+      card.querySelector('#notes-' + p.id).value = p.notes || '';
+      clearMsg();
+    });
+
+    card.querySelector('[data-act="rename"]').addEventListener('click', () => {
+      clearMsg();
+      const head = card.querySelector('.provider-head');
+      const nameEl = head.querySelector('[data-role="name"]');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'inline-editing';
+      input.value = p.name;
+      input.setAttribute('aria-label', 'Provider name');
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+
+      const renameBtn = head.querySelector('[data-act="rename"]');
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'btn tiny primary';
+      saveBtn.textContent = 'Save name';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn tiny';
+      cancelBtn.textContent = 'Cancel';
+      renameBtn.replaceWith(saveBtn);
+      saveBtn.after(cancelBtn);
+
+      const restore = () => {
+        const span = document.createElement('span');
+        span.className = 'provider-name';
+        span.dataset.role = 'name';
+        span.textContent = p.name;
+        input.replaceWith(span);
+        saveBtn.replaceWith(renameBtn);
+        cancelBtn.remove();
+      };
+
+      const showMergeOffer = (name) => {
+        showMsg(`
+          <div>A provider named <strong>${escapeHtml(name)}</strong> already exists.</div>
+          <div class="btn-row" style="margin-top:8px;">
+            <button class="btn tiny" data-act="merge-into">Merge “${escapeHtml(p.name)}” into ${escapeHtml(name)}</button>
+            <button class="btn tiny" data-act="dismiss-merge">Cancel</button>
+          </div>`);
+        msg.querySelector('[data-act="merge-into"]').addEventListener('click', async () => {
+          let res;
+          try {
+            res = await api(`/api/providers/${p.id}/merge`, { method: 'POST', json: { into: name } });
+          } catch (err) {
+            showMsg(escapeHtml(err.message));
+            return;
+          }
+          if (res && res.locked) { lockVault(); return; }
+          toast('Providers merged');
+          renderProviders();
+        });
+        msg.querySelector('[data-act="dismiss-merge"]').addEventListener('click', () => { clearMsg(); restore(); });
+      };
+
+      const save = async () => {
+        const name = input.value.trim();
+        if (!name) { showMsg('Name must not be empty.'); return; }
+        let res;
+        try {
+          res = await api(`/api/providers/${p.id}`, { method: 'PUT', json: { name } });
+        } catch (err) {
+          if (err.status === 409) { showMergeOffer(name); return; }
+          showMsg(escapeHtml(err.message));
+          return;
+        }
+        if (res && res.locked) { lockVault(); return; }
+        p.name = res.name;
+        const span = document.createElement('span');
+        span.className = 'provider-name';
+        span.dataset.role = 'name';
+        span.textContent = p.name;
+        input.replaceWith(span);
+        saveBtn.replaceWith(renameBtn);
+        cancelBtn.remove();
+      };
+
+      saveBtn.addEventListener('click', save);
+      cancelBtn.addEventListener('click', restore);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); restore(); }
+      });
+    });
   }
 }
 
@@ -1267,56 +1376,20 @@ function openImportModal() {
     renderKeys();
   });
 }
-  async function renderSettings() {
+async function renderSettings() {
   const root = $('#view-root');
   root.innerHTML = `
     <div class="view">
       <h1>Settings</h1>
-      <p class="lede">Manage your master password, session, and encryption.</p>
+      <p class="lede">Session, backup, and restore.</p>
 
       <div class="panel">
-        <h2>Master password warning</h2>
-        <div class="warning">
-          <p>Your master password is the <strong>only</strong> recovery method for your encrypted vault.</p>
-          <p>If you lose your master password, <strong>all encrypted keys are unrecoverable</strong> &mdash; there is no backdoor and no reset.</p>
-          <p>Encryption uses Argon2id with a per-install random salt; the salt is stored in your database.</p>
+        <h2>Session</h2>
+        <p>Your session expires after <strong id="session-timeout-value">15</strong> minutes of idle activity.</p>
+        <p class="small">The timeout is set when the server starts (<code>KEYVAULT_SESSION_TIMEOUT</code>). Idle sessions are cleared and the master key is removed from memory.</p>
+        <div class="footer" style="justify-content:flex-start;">
+          <button class="btn danger" id="lock-now">Lock now</button>
         </div>
-        <div class="small" style="margin-top:8px;">
-          Backed up vault? <a href="#/settings/backup">Create a backup now</a>.
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>Session timeout</h2>
-        <p>Your session expires after <input id="session-timeout" type="number" min="1" max="1440" value="15" style="width:90px;"> minutes of idle activity.</p>
-        <p class="small">The server enforces this timeout. Idle sessions are cleared and the master key is removed from memory.</p>
-      </div>
-
-      <div class="panel">
-        <h2>Account state</h2>
-        <div class="stat-row">
-          <div class="stat-card" style="flex:1;">
-            <div class="stat-value">${state.unlocked ? 'Unlocked' : 'Locked'}</div>
-            <div class="stat-label">Master key in memory</div>
-          </div>
-          <div class="stat-card" style="flex:1;">
-            <div class="stat-value">${state.setup ? 'Set' : 'Not set'}</div>
-            <div class="stat-label">Master password configured</div>
-          </div>
-        </div>
-        <div class="small" style="margin-top:8px;">
-          <span id="status-text"></span>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>What we do not store</h2>
-        <ul class="plain-list">
-          <li>Your master password is never stored, logged, or transmitted.</li>
-          <li>API keys are encrypted at rest with AES-256-GCM and a unique nonce.</li>
-          <li>Session cookies are <code>HttpOnly</code>, <code>SameSite=Strict</code>, and expire after the configured timeout.</li>
-          <li>API keys never appear in JSON responses (masked).</li>
-        </ul>
       </div>
 
       <div class="panel">
@@ -1337,28 +1410,19 @@ function openImportModal() {
 
         <div id="restore-result" class="small" style="display:none; margin-top:8px;"></div>
       </div>
-
-      <div class="footer" style="justify-content:flex-end;">
-        <a class="btn" href="#/keys">Back to API Keys</a>
-      </div>
     </div>`;
 
-  const input = $('#session-timeout');
   try {
     const st = await api('/api/auth/status');
     if (st.csrf_token) state.csrf = st.csrf_token;
-    const timeout = st.timeout || 15;
-    input.value = timeout;
+    $('#session-timeout-value').textContent = st.timeout || 15;
   } catch (_) { /* ignore */ }
 
-  input.addEventListener('change', () => {
-    const v = Number(input.value);
-    if (v >= 1 && v <= 1440) {
-      toast('Timeout saved (server restart required to apply)');
-    } else {
-      input.value = 15;
-      toast('Enter a value between 1 and 1440 minutes', 'error');
-    }
+  $('#lock-now').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/lock', { method: 'POST' });
+    } catch (_) { /* the overlay appears either way */ }
+    lockVault();
   });
 
   $('#backup-btn').addEventListener('click', async () => {
@@ -1373,9 +1437,18 @@ function openImportModal() {
         method: 'POST',
         headers: { 'X-CSRF-Token': state.csrf },
       });
+      if (res.status === 401) {
+        status.textContent = 'Vault is locked. Unlock to continue.';
+        lockVault();
+        return;
+      }
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || 'Backup failed');
+        let msg = 'Backup failed';
+        try {
+          const data = await res.json();
+          if (data.error) msg = data.error;
+        } catch (_) { /* keep default */ }
+        throw new Error(msg);
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -1386,13 +1459,14 @@ function openImportModal() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      status.textContent = 'Backup downloaded.';
       toast('Backup downloaded');
     } catch (err) {
+      status.textContent = err.message;
       toast(err.message, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Backup now';
-      status.style.display = 'none';
     }
   });
 
@@ -1419,6 +1493,12 @@ function openImportModal() {
         headers: { 'X-CSRF-Token': state.csrf },
         body: formData,
       });
+      if (res.status === 401) {
+        result.style.display = 'block';
+        result.textContent = 'Vault is locked. Unlock to continue.';
+        lockVault();
+        return;
+      }
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Restore failed');
@@ -1437,15 +1517,6 @@ function openImportModal() {
       e.target.value = '';
     }
   });
-
-  const statusEl = $('#status-text');
-  if (state.unlocked) {
-    statusEl.textContent = 'Key vault is unlocked. Session active until ' + new Date(Date.now() + 15 * 60000).toLocaleString();
-  } else if (state.setup) {
-    statusEl.textContent = 'Setup complete. Unlock with your master password to access your vault.';
-  } else {
-    statusEl.textContent = 'No master password configured yet. Use the setup overlay to create one.';
-  }
 }
 
 function fileUploadName(file) {

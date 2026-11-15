@@ -79,6 +79,7 @@ func main() {
 	mux.Handle("GET /api/providers/{id}", protected(providersHandler.Get))
 	mux.Handle("POST /api/providers", protected(providersHandler.Create))
 	mux.Handle("PUT /api/providers/{id}", protected(providersHandler.Update))
+	mux.Handle("POST /api/providers/{id}/merge", protected(providersHandler.Merge))
 	mux.Handle("DELETE /api/providers/{id}", protected(providersHandler.Delete))
 	mux.Handle("PUT /api/providers/{id}/notes", protected(providersHandler.UpdateNotes))
 	keysHandler := &handlers.KeysHandler{DB: db, Auth: auth}

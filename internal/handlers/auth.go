@@ -18,6 +18,7 @@ type statusResponse struct {
 	Setup     bool   `json:"setup"`
 	Unlocked  bool   `json:"unlocked"`
 	CSRFToken string `json:"csrf_token,omitempty"`
+	Timeout   int    `json:"timeout,omitempty"` // idle session timeout in minutes
 }
 
 type passwordRequest struct {
@@ -55,6 +56,9 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := statusResponse{Setup: setup}
+	if h.Sessions != nil {
+		resp.Timeout = int(h.Sessions.Timeout().Minutes())
+	}
 	if s := h.Sessions.Current(r); s != nil && h.Auth.Unlocked() {
 		resp.Unlocked = true
 		resp.CSRFToken = s.CSRF
