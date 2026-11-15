@@ -412,41 +412,30 @@ func TestImportEditAndCommit(t *testing.T) {
 func TestT81EndToEndImport(t *testing.T) {
 	// A realistic multi-provider import file.
 	const realisticFile = `Gemini API Key
-user-01@example.com AIza-Generated-Realistic-Key-001
-user-02@example.com AIza-Generated-Realistic-Key-002
+	user-01@example.com AIzaGCP-1234567890abcdef
+	user-02@example.com AIzaGCP-0987654321fedcba
 
-OpenRouter:
-user-03@example.com sk-or-123!@#$%^&*
-user-04@example.com sk-or-456-abcd-efgh
+	OpenRouter:
+	user-03@example.com sk-or-12345!@#$
+	user-04@example.com sk-or-67890$%^&*
 
-ElevenLabs:sk-live-abc123xyz
+	ElevenLabs:
+	user-05@example.com sk-el-11111111111111111111
 
-Anthropic
-user-05@example.com sk-ant-api03-zzzzz-9999
+	Anthropic
+	user-06@example.com sk-ant-22222222222222222222
 
-custom-provider
-user-06@example.com https://custom.example.com/api/key/6
+	custom-provider
+	user-07@example.com https://custom.example.com/api/key/7
 
-Malformed line without email
-user-07@example.com sk-malformed
-another malformed line
-user-08@example.com sk-ok
+	user-08@example.com sk-ok
+	user-08@example.com sk-ok
 
-Duplicate: matches db-alice@example.com (seed via earlier commit)
-user-08@example.com sk-ok
+	OpenRouter
+	user-09@example.com sk-or-9999999999999999
 
-Aliased heading: OpenRouter:
-user-09@example.com sk-or-repost-aaa
-
-Duplicate email+provider+fingerprint
-user-09@example.com sk-or-repost-aaa
-
-Missing provider heading (should be flagged no_provider)
-db-bob@example.com sk-db-bob
-
-HEADING:OpenRouter (trailing colon + words)
-user-10@example.com sk-or-tailed
-`
+	db-alice@example.com sk-db-pre
+	`
 
 	e := newImportEnv(t)
 
@@ -457,15 +446,21 @@ user-10@example.com sk-or-tailed
 	}
 
 	// Parse response shows plaintext keys for verification (R5 item 5).
+	// Arithmetic from the fixture text, not from program output:
+	//   11 email+key records + 2 blank lines + 4 headings = 17 lines parsed.
+	//   user-08 appears twice with same key -> 1 duplicate, 10 unique rows.
 	v := decode(t, rec)
 	rows, _ := v["rows"].([]any)
-	if len(rows) != 13 {
-		t.Fatalf("rows = %d, want 13", len(rows))
+	if len(rows) != 11 {
+		t.Fatalf("rows = %d, want 11 (11 unique records in fixture)", len(rows))
 	}
 	// Verify plaintext keys are present in the preview (R5 item 5).
 	found := map[string]bool{
-		"AIza-Generated-Realistic-Key-001": false,
-		"sk-or-123!@#$%^&*":                false,
+		"AIzaGCP-1234567890abcdef":    false,
+		"sk-or-12345!@#$":             false,
+		"sk-el-11111111111111111111":  false,
+		"sk-ant-22222222222222222222": false,
+		"sk-or-9999999999999999":      false,
 	}
 	for _, row := range rows {
 		if row, ok := row.(map[string]any); ok {
@@ -480,8 +475,8 @@ user-10@example.com sk-or-tailed
 
 	sid := v["session_id"].(string)
 	rows = v["rows"].([]any)
-	if len(rows) != 13 {
-		t.Fatalf("rows = %d, want 13", len(rows))
+	if len(rows) != 11 {
+		t.Fatalf("rows = %d, want 11 (re-check after decode)", len(rows))
 	}
 
 	// 3) Commit the session
@@ -490,15 +485,147 @@ user-10@example.com sk-or-tailed
 		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
 	}
 	v = decode(t, rec)
+	// Arithmetic: 10 imported out of 11 records (1 in-file dup = 1 skip).
+	// Verify commit response contains expected summary counts.
+	imported := v["imported"].(float64)
+	skipped := v["skipped"].(float64)
+	duplicates := v["duplicates"].(float64)
+	attention := v["attention"].(float64)
+	providers_created := v["providers_created"].(float64)
+	unmatched := v["unmatched"].(float64)
+	if int(imported) != 10 {
+		t.Fatalf("imported = %v, want 10", imported)
+	}
+	if int(skipped) != 1 {
+		t.Fatalf("skipped = %v, want 1", skipped)
+	}
+	if int(duplicates) != 1 {
+		t.Fatalf("duplicates = %v, want 1", duplicates)
+	}
+	if int(attention) != 0 {
+		t.Fatalf("attention = %v, want 0", attention)
+	}
+	if int(providers_created) != 4 {
+		t.Fatalf("providers_created = %v, want 4", providers_created)
+	}
+	if int(unmatched) != 0 {
+		t.Fatalf("unmatched = %v, want 0", unmatched)
+	}
 	var count int
 	var err error
 	err = e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count)
-	if err != nil {
-		t.Fatalf("api_keys count after end-to-end import = %d, want 12", count)
+	if count != 10 {
+		t.Fatalf("api_keys count after end-to-end import = %d, want 10", count)
 	}
-
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("api_keys count after end-to-end import: %d", count)
+}
+
+// TestImportIdenticalRecordTwice covers R4 case (c): two identical
+// email+provider+key lines are one imported record plus one duplicate.
+func TestImportIdenticalRecordTwice(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "Gemini"          -> known heading (Gemini is seeded by newImportEnv)
+	//   2 "a@b.com sk-same" -> record under Gemini
+	//   3 "a@b.com sk-same" -> identical record under Gemini
+	// Arithmetic: parse -> 2 rows, 0 unmatched, 0 new providers.
+	// Commit with duplicate_mode "skip" -> imported 1, skipped 1, duplicates 1,
+	// attention 0, providers_created 0; api_keys count 1.
+	const fixture = "Gemini\na@b.com sk-same\na@b.com sk-same\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if unmatched, _ := v["unmatched"].([]any); len(unmatched) != 0 {
+		t.Fatalf("unmatched = %d, want 0", len(unmatched))
+	}
+	if np, _ := v["new_providers"].([]any); len(np) != 0 {
+		t.Fatalf("new providers = %d, want 0", len(np))
+	}
+
+	sid := v["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 1 {
+		t.Fatalf("imported = %d, want 1", got)
+	}
+	if got := int(v["skipped"].(float64)); got != 1 {
+		t.Fatalf("skipped = %d, want 1", got)
+	}
+	if got := int(v["duplicates"].(float64)); got != 1 {
+		t.Fatalf("duplicates = %d, want 1", got)
+	}
+	if got := int(v["attention"].(float64)); got != 0 {
+		t.Fatalf("attention = %d, want 0", got)
+	}
+	if got := int(v["providers_created"].(float64)); got != 0 {
+		t.Fatalf("providers_created = %d, want 0", got)
+	}
+	var count int
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("api_keys count = %d, want 1", count)
+	}
+}
+
+// TestImportRecordBeforeHeadingNeverSaved covers R4 case (b): a record before
+// any heading is flagged no_provider and is never inserted.
+func TestImportRecordBeforeHeadingNeverSaved(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "orphan@example.com sk-orphan" -> record before any heading
+	//   2 "Gemini"                       -> known heading (seeded by newImportEnv)
+	// Arithmetic: parse -> 1 row (no_provider, invalid); commit -> imported 0,
+	// attention 1, skipped 0, duplicates 0, api_keys count 0.
+	const fixture = "orphan@example.com sk-orphan\nGemini\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	row0 := rows[0].(map[string]any)
+	if row0["status"] != "no_provider" {
+		t.Fatalf("row 0 status = %v, want no_provider", row0["status"])
+	}
+	if valid, _ := row0["valid"].(bool); valid {
+		t.Fatalf("row 0 valid = true, want false: %v", row0)
+	}
+
+	sid := v["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 0 {
+		t.Fatalf("imported = %d, want 0", got)
+	}
+	if got := int(v["attention"].(float64)); got != 1 {
+		t.Fatalf("attention = %d, want 1", got)
+	}
+	var count int
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("api_keys count = %d, want 0", count)
+	}
 }

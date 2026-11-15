@@ -6,6 +6,7 @@ package importer
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Record is one parsed email/key candidate.
@@ -14,7 +15,7 @@ type Record struct {
 	Email    string `json:"email"`
 	Key      string `json:"key"`
 	Provider string `json:"provider"`
-	Status   string `json:"status"` // "ok" or "no_provider"
+	Status   string `json:"status"` // "ok", "no_provider", or "needs_attention"
 }
 
 // UnmatchedLine is a line the parser could not classify. It is preserved
@@ -52,10 +53,7 @@ var emailStartRe = regexp.MustCompile(`^([^\s@]+@[^\s@]+\.[^\s@]+)\s+(\S.*)$`)
 
 const StatusOK = "ok"
 const StatusNoProvider = "no_provider"
-
-var headingTrailingPunct = strings.NewReplacer(
-	":", "", ";", "", ",", "", ".", "", "!", "", "-", "", "–", "", "—", "", "*", "", "_", "",
-)
+const StatusNeedsAttention = "needs_attention"
 
 // trimTrailingPunct removes trailing heading punctuation from a candidate
 // provider name ("AnotherNewOne:" -> "AnotherNewOne"). Internal punctuation
@@ -64,18 +62,90 @@ func trimTrailingPunct(s string) string {
 	return strings.TrimRight(s, ":;,.!-–—*_ ")
 }
 
-// candidateProviderName returns the heading portion of a candidate line.
-// When a key is glued to a heading on the same line ("ElevenLabs:sk-…"),
-// the key (a token with no spaces after the colon) is not part of the
-// heading name.
-func candidateProviderName(line string) string {
-	if i := strings.Index(line, ":"); i >= 0 {
-		rest := line[i+1:]
-		if rest != "" && !strings.ContainsAny(rest, " 	") {
-			return trimTrailingPunct(line[:i])
+// stripTrailingPhrase removes a trailing key phrase so the classifier sees
+// the bare provider name ("Gemini API Key" -> "Gemini", "ElevenLabs Keys"
+// -> "ElevenLabs"). The phrase must be a separate word at the end of the
+// string, not embedded in a larger word.
+func stripTrailingPhrase(s string) string {
+	s = strings.TrimSpace(s)
+	lower := strings.ToLower(s)
+	for _, phrase := range []string{"api keys", "api key", "keys"} {
+		if idx := strings.LastIndex(lower, phrase); idx >= 0 && idx+len(phrase) == len(lower) {
+			if idx == 0 {
+				return ""
+			}
+			if unicode.IsSpace(rune(lower[idx-1])) {
+				return strings.TrimSpace(s[:idx])
+			}
 		}
 	}
-	return trimTrailingPunct(line)
+	return s
+}
+
+// headingWordRe matches a provider heading candidate: 1 to 3 words made of
+// letters, digits, dots and hyphens. Hyphens and dots are allowed inside a
+// word so names like "My-Provider" and "v1.2" classify as single words.
+var headingWordRe = regexp.MustCompile(`^[A-Za-z0-9.-]+(?: [A-Za-z0-9.-]+){0,2}$`)
+
+// isUnrecognizedLine reports whether a non-record line is a sentence,
+// "Name: value" pair, or other line that is never a provider heading.
+func isUnrecognizedLine(line string) bool {
+	lower := strings.ToLower(line)
+	if strings.Contains(lower, "http") || strings.Contains(lower, "/") || strings.Contains(lower, "$") {
+		return true
+	}
+	if strings.ContainsAny(line, "()" /* parentheses */) {
+		return true
+	}
+	// "Name: value" pair: a colon followed by a non-space character.
+	if idx := strings.IndexByte(line, ':'); idx >= 0 {
+		if idx+1 < len(line) && !unicode.IsSpace(rune(line[idx+1])) {
+			return true
+		}
+	}
+	return false
+}
+
+// keyOnlyRe matches a single-token key-like line: whitespace-free, no "@",
+// long enough, and carrying characters a provider name would not use.
+var keyOnlyRe = regexp.MustCompile(`^[A-Za-z0-9_\-.]{12,}$`)
+
+// isKeyOnly reports whether a no-email, single-token line is key-looking and
+// should be returned as a record with an empty email (provider still set)
+// rather than classified as a provider heading.
+func isKeyOnly(line string) bool {
+	if strings.ContainsAny(line, " \t@") || !keyOnlyRe.MatchString(line) {
+		return false
+	}
+	// A plain alphabetic word (possibly hyphenated) is treated as a heading
+	// name below, not a key.
+	if containsOnlyLetters(line) {
+		return false
+	}
+	if strings.ContainsAny(line, "0123456789") {
+		return true
+	}
+	if strings.Contains(line, "_") || strings.Contains(line, "..") {
+		return true
+	}
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "sk-") || strings.HasPrefix(lower, "sk_") ||
+		strings.HasPrefix(lower, "aiza") || strings.HasPrefix(lower, "opn-") ||
+		strings.HasPrefix(lower, "ghp_") || strings.HasPrefix(lower, "gho_") ||
+		strings.HasPrefix(lower, "xoxb_") || strings.HasPrefix(lower, "pk_") ||
+		strings.HasPrefix(lower, "rk_") {
+		return true
+	}
+	return false
+}
+
+func containsOnlyLetters(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseTXT parses a plain-text import document. customProviders are extra
@@ -114,23 +184,63 @@ func ParseTXT(input string, customProviders ...string) *Result {
 			continue
 		}
 
-		// Provider heading? Longest names first so "Google Gemini" wins
-		// over "Gemini" when both could match.
-		norm := strings.ToLower(strings.TrimSpace(headingTrailingPunct.Replace(line)))
-		if name, ok := matchHeading(norm, known); ok {
+		// A line containing "@" that is not an email record is malformed.
+		if strings.Contains(line, "@") {
+			res.Unmatched = append(res.Unmatched, UnmatchedLine{
+				Line:   lineNo,
+				Text:   line,
+				Reason: "malformed record",
+			})
+			continue
+		}
+
+		// Sentences, "Name: value" pairs, slashes, http, "$", parentheses.
+		if isUnrecognizedLine(line) {
+			res.Unmatched = append(res.Unmatched, UnmatchedLine{
+				Line:   lineNo,
+				Text:   line,
+				Reason: "unrecognized line",
+			})
+			continue
+		}
+
+		// Key-only line under a heading: record with an empty email that the
+		// user must fill in before the key is useful.
+		if isKeyOnly(line) {
+			res.Records = append(res.Records, Record{
+				Line:     lineNo,
+				Email:    "",
+				Key:      line,
+				Provider: current,
+				Status:   StatusNeedsAttention,
+			})
+			if np, ok := newProviders[current]; ok {
+				np.Records = append(np.Records, res.Records[len(res.Records)-1])
+			}
+			continue
+		}
+
+		// Provider heading: strip trailing punctuation and trailing key
+		// phrases, then require 1 to 3 words of letters, digits, dots, and
+		// hyphens. Known names match case-insensitively.
+		candidate := trimTrailingPunct(line)
+		candidate = stripTrailingPhrase(candidate)
+		if !headingWordRe.MatchString(candidate) {
+			res.Unmatched = append(res.Unmatched, UnmatchedLine{
+				Line:   lineNo,
+				Text:   line,
+				Reason: "unrecognized line",
+			})
+			continue
+		}
+		if name, ok := matchKnownCaseInsensitive(candidate, known); ok {
 			current = name
 			continue
 		}
 
-		// Not a recognized heading and not a broken record (contains '@').
-		// A line with no email that looks like a heading is a candidate
-		// provider: group records under it and return it as a "new provider
-		// detected" item for user confirmation, not as an unmatched line.
-		if strings.Contains(line, "@") {
-			res.Unmatched = append(res.Unmatched, UnmatchedLine{Line: lineNo, Text: line, Reason: "malformed record"})
-			continue
-		}
-		name := candidateProviderName(line)
+		// Unknown candidate heading: group records under it as a new
+		// provider candidate.
+		name := candidate
 		np := &NewProvider{Name: name}
 		res.NewProviders = append(res.NewProviders, np)
 		newProviders[name] = np
@@ -139,29 +249,13 @@ func ParseTXT(input string, customProviders ...string) *Result {
 	return res
 }
 
-// matchHeading reports whether norm (lowercased, punctuation-stripped,
-// space-trimmed) is a known provider name optionally followed by trailing
-// words. Returns the canonical provider name.
-func matchHeading(norm string, known []string) (string, bool) {
-	sorted := append([]string{}, known...)
-	// Longest first so multi-word names match before their prefixes.
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && len(strings.ToLower(sorted[j])) > len(strings.ToLower(sorted[j-1])); j-- {
-			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
-		}
-	}
-	for _, name := range sorted {
-		lname := strings.ToLower(name)
-		if norm == lname {
+// matchKnownCaseInsensitive reports whether norm is one of the known
+// provider names, ignoring case, and returns the canonical name.
+func matchKnownCaseInsensitive(norm string, known []string) (string, bool) {
+	norm = strings.ToLower(norm)
+	for _, name := range known {
+		if strings.ToLower(name) == norm {
 			return name, true
-		}
-		if strings.HasPrefix(norm, lname+" ") {
-			// Trailing words allowed on a heading line ("Gemini API Key",
-			// "ElevenLabs Keys"). Reject if the remainder holds an '@'.
-			rest := norm[len(lname)+1:]
-			if !strings.Contains(rest, "@") {
-				return name, true
-			}
 		}
 	}
 	return "", false
