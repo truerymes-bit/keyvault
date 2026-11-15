@@ -82,6 +82,31 @@ func (s *SessionStore) UpdateRecords(id string, records []Record) bool {
 	return true
 }
 
+// UpdateUnmatched replaces the unmatched-lines slice of an existing session.
+func (s *SessionStore) UpdateUnmatched(id string, unmatched []UnmatchedLine) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.sessions[id]
+	if !ok {
+		return false
+	}
+	sess.Unmatched = unmatched
+	return true
+}
+
+// AppendRecord appends a record to an existing session. It is used when an
+// unrecognized line is turned into a record by the user.
+func (s *SessionStore) AppendRecord(id string, rec Record) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.sessions[id]
+	if !ok {
+		return false
+	}
+	sess.Records = append(sess.Records, rec)
+	return true
+}
+
 // Delete removes the session (called after commit).
 func (s *SessionStore) Delete(id string) {
 	s.mu.Lock()

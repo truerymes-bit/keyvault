@@ -984,37 +984,77 @@ function openImportModal() {
       .catch((err) => toast(err.message, 'error'));
   };
 
+  const emailTokenRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Prefill only what the line contains: an email-looking token goes to the
+  // email field and the longest remaining token to the key field; otherwise
+  // both stay blank. Provider is the section heading the line appeared under
+  // (server data), or blank. Never guess.
+  const prefillFromLine = (text) => {
+    const tokens = text.trim().split(/\s+/).filter(Boolean);
+    const emailIdx = tokens.findIndex((t) => emailTokenRe.test(t));
+    if (emailIdx < 0) return { email: '', key: '' };
+    const email = tokens[emailIdx];
+    const rest = tokens.filter((_, i) => i !== emailIdx);
+    const key = rest.length ? rest.reduce((a, b) => (b.length > a.length ? b : a)) : '';
+    return { email, key };
+  };
+
+  const unmatchedEdit = (edit) => {
+    if (!session) return;
+    api('/api/import/validate', { method: 'POST', json: { session_id: session, unmatched: [edit] } }, { 'X-CSRF-Token': state.csrf })
+      .then((data) => {
+        session = data.session_id;
+        cellInputs.clear();
+        renderRows(data.rows);
+        renderUnmatched(data.unmatched);
+      })
+      .catch((err) => toast(err.message, 'error'));
+  };
+
   const renderUnmatched = (lines) => {
     unmatchedEl.innerHTML = '';
     if (!Array.isArray(lines) || !lines.length) { unmatchedEl.classList.add('hidden'); return; }
     unmatchedEl.classList.remove('hidden');
-    unmatchedEl.innerHTML = `<div class="field"><span class="small">Unmatched lines (flagged for review — assign email, key and provider):</span></div><table><tbody>`;
+    const head = document.createElement('div');
+    head.className = 'field';
+    head.innerHTML = '<span class="small">Unrecognized lines — plain text, not keys. Remove them or use them as a record.</span>';
+    unmatchedEl.appendChild(head);
+    const table = document.createElement('table');
+    const tbodyEl = document.createElement('tbody');
     for (const u of lines) {
       const tr = document.createElement('tr');
+      tr.className = 'unmatched-row';
+      const pre = prefillFromLine(u.text);
       tr.innerHTML = `
         <td colspan="5">
           <div class="unmatched-line">${escapeHtml(u.text)} <span class="small">— ${escapeHtml(u.reason)}</span></div>
           <div class="field" style="margin-top:6px;">
-            <input class="inline-editing" id="unmatch-email-${u.line}" placeholder="email">
-            <input class="inline-editing" id="unmatch-key-${u.line}" placeholder="API key" style="width:220px;">
-            <select id="unmatch-provider-${u.line}" style="width:180px;">
-              <option value="">Assign provider…</option>
-              <option value="__new__">Create new provider</option>
-            </select>
+            <input class="inline-editing" id="unmatch-email-${u.line}" placeholder="email" value="${escapeHtml(pre.email)}">
+            <input class="inline-editing cell" data-field="key" id="unmatch-key-${u.line}" placeholder="API key" style="width:220px;" value="${escapeHtml(pre.key)}">
+            <input class="inline-editing" id="unmatch-provider-${u.line}" placeholder="provider" style="width:180px;" value="${escapeHtml(u.provider || '')}">
+          </div>
+          <div class="btn-row" style="margin-top:6px;">
+            <button class="btn tiny" data-act="use" data-line="${u.line}">Use as record</button>
+            <button class="btn tiny danger" data-act="remove" data-line="${u.line}">✕</button>
           </div>
         </td>`;
-      unmatchedEl.appendChild(tr);
+      tbodyEl.appendChild(tr);
     }
-    api('/api/providers').then((providers) => {
-      unmatchedEl.querySelectorAll('select').forEach((sel) => {
-        providers.forEach((p) => {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          opt.textContent = p.name;
-          sel.appendChild(opt);
-        });
+    table.appendChild(tbodyEl);
+    unmatchedEl.appendChild(table);
+    tbodyEl.querySelectorAll('[data-act="remove"]').forEach((b) => {
+      b.addEventListener('click', () => unmatchedEdit({ line: Number(b.dataset.line), remove: true }));
+    });
+    tbodyEl.querySelectorAll('[data-act="use"]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const line = Number(b.dataset.line);
+        const email = (document.getElementById(`unmatch-email-${line}`) || {}).value || '';
+        const key = (document.getElementById(`unmatch-key-${line}`) || {}).value || '';
+        const provider = (document.getElementById(`unmatch-provider-${line}`) || {}).value || '';
+        unmatchedEdit({ line, email, key, provider });
       });
-    }).catch(() => {});
+    });
   };
 
   const acceptSuggestion = (np) => {

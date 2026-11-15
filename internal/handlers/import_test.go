@@ -633,6 +633,94 @@ func TestImportRecordBeforeHeadingNeverSaved(t *testing.T) {
 	}
 }
 
+// TestUnmatchedLinesPlainAndUseAsRecord covers R5 item 3: unrecognized lines
+// are shown as plain text (they are not keys, so they are never masked),
+// carry the section heading they appeared under, and can be removed or
+// turned into a record.
+func TestUnmatchedLinesPlainAndUseAsRecord(t *testing.T) {
+	e := newImportEnv(t)
+	// Fixture, line by line:
+	//   1 "Gemini"                        -> known heading
+	//   2 "alice@example.com sk-a"        -> record under Gemini
+	//   3 "Content-Type: application/json" -> unrecognized line under Gemini
+	// Arithmetic: parse -> 1 row, 1 unmatched (plain text, provider Gemini).
+	const fixture = "Gemini\nalice@example.com sk-a\nContent-Type: application/json\n"
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	ub, _ := v["unmatched"].([]any)
+	if len(ub) != 1 {
+		t.Fatalf("unmatched = %d, want 1 (%v)", len(ub), v)
+	}
+	u := ub[0].(map[string]any)
+	if u["text"] != "Content-Type: application/json" {
+		t.Fatalf("unmatched text = %v, want plain text (not masked)", u["text"])
+	}
+	if u["provider"] != "Gemini" {
+		t.Fatalf("unmatched provider = %v, want Gemini", u["provider"])
+	}
+	sid := v["session_id"].(string)
+
+	// Remove it: the line disappears and the row stays.
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"unmatched":[{"line":3,"remove":true}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if ub, _ := v["unmatched"].([]any); len(ub) != 0 {
+		t.Fatalf("unmatched after remove = %d, want 0 (%v)", len(ub), v)
+	}
+	if rows, _ := v["rows"].([]any); len(rows) != 1 {
+		t.Fatalf("rows after remove = %d, want 1", len(rows))
+	}
+
+	// Use as record: a second parse, then convert line 3 with the prefilled
+	// values (email and key blank, provider Gemini). The line moves into the
+	// review table flagged needs_attention until email and key are filled.
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-parse: %d %s", rec.Code, rec.Body)
+	}
+	sid = decode(t, rec)["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"unmatched":[{"line":3,"provider":"Gemini"}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("use-as-record: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if ub, _ := v["unmatched"].([]any); len(ub) != 0 {
+		t.Fatalf("unmatched after use = %d, want 0 (%v)", len(ub), v)
+	}
+	rows, _ = v["rows"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("rows after use = %d, want 2", len(rows))
+	}
+	var added map[string]any
+	for _, r := range rows {
+		rm := r.(map[string]any)
+		if rm["line"] == float64(3) {
+			added = rm
+		}
+	}
+	if added == nil {
+		t.Fatalf("line 3 did not become a row: %v", rows)
+	}
+	if added["provider"] != "Gemini" || added["email"] != "" || added["key"] != "" {
+		t.Fatalf("added row = %v, want provider Gemini and blank email/key", added)
+	}
+	if added["status"] != "needs_attention" {
+		t.Fatalf("added row status = %v, want needs_attention", added["status"])
+	}
+	if valid, _ := added["valid"].(bool); valid {
+		t.Fatalf("added row valid = true, want false until email/key are filled")
+	}
+}
+
 // TestImportSuggestionOfferedAndAccepted covers item 11: a misspelled heading
 // is offered as a new provider with a "Did you mean" suggestion, and
 // accepting it renames the grouped records. The correction is never silent.

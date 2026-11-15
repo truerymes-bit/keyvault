@@ -19,11 +19,13 @@ type Record struct {
 }
 
 // UnmatchedLine is a line the parser could not classify. It is preserved
-// for manual review, never silently dropped.
+// for manual review, never silently dropped. Provider is the section heading
+// the line appeared under ("" when there was none); it is data, not a guess.
 type UnmatchedLine struct {
-	Line   int    `json:"line"`
-	Text   string `json:"text"`
-	Reason string `json:"reason"`
+	Line     int    `json:"line"`
+	Text     string `json:"text"`
+	Reason   string `json:"reason"`
+	Provider string `json:"provider,omitempty"`
 }
 
 // NewProvider is a heading that looked like a provider but is not in the
@@ -190,9 +192,10 @@ func ParseTXT(input string, customProviders ...string) *Result {
 		// A line containing "@" that is not an email record is malformed.
 		if strings.Contains(line, "@") {
 			res.Unmatched = append(res.Unmatched, UnmatchedLine{
-				Line:   lineNo,
-				Text:   line,
-				Reason: "malformed record",
+				Line:     lineNo,
+				Text:     line,
+				Reason:   "malformed record",
+				Provider: current,
 			})
 			continue
 		}
@@ -200,9 +203,10 @@ func ParseTXT(input string, customProviders ...string) *Result {
 		// Sentences, "Name: value" pairs, slashes, http, "$", parentheses.
 		if isUnrecognizedLine(line) {
 			res.Unmatched = append(res.Unmatched, UnmatchedLine{
-				Line:   lineNo,
-				Text:   line,
-				Reason: "unrecognized line",
+				Line:     lineNo,
+				Text:     line,
+				Reason:   "unrecognized line",
+				Provider: current,
 			})
 			continue
 		}
@@ -230,9 +234,10 @@ func ParseTXT(input string, customProviders ...string) *Result {
 		candidate = stripTrailingPhrase(candidate)
 		if !headingWordRe.MatchString(candidate) {
 			res.Unmatched = append(res.Unmatched, UnmatchedLine{
-				Line:   lineNo,
-				Text:   line,
-				Reason: "unrecognized line",
+				Line:     lineNo,
+				Text:     line,
+				Reason:   "unrecognized line",
+				Provider: current,
 			})
 			continue
 		}

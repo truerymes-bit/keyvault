@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"keyvault/internal/encryption"
@@ -38,9 +37,10 @@ type importRowJSON struct {
 }
 
 type importUnmatchedJSON struct {
-	Line   int    `json:"line"`
-	Text   string `json:"text"`
-	Reason string `json:"reason"`
+	Line     int    `json:"line"`
+	Text     string `json:"text"`
+	Reason   string `json:"reason"`
+	Provider string `json:"provider,omitempty"`
 }
 
 type parseRequest struct {
@@ -64,27 +64,23 @@ type importRowEdit struct {
 type editRequest struct {
 	SessionID string          `json:"session_id"`
 	Records   []importRowEdit `json:"records,omitempty"`
+	Unmatched []unmatchedEdit `json:"unmatched,omitempty"`
+}
+
+// unmatchedEdit turns an unrecognized line into a record (Remove false) or
+// drops it from the session (Remove true). Line identifies the line number.
+type unmatchedEdit struct {
+	Line     int    `json:"line"`
+	Email    string `json:"email,omitempty"`
+	Key      string `json:"key,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Remove   bool   `json:"remove,omitempty"`
 }
 
 type commitRequest struct {
 	SessionID     string          `json:"session_id"`
 	Records       []importRowEdit `json:"records,omitempty"`
 	DuplicateMode string          `json:"duplicate_mode"` // skip, import, review
-}
-
-var unmatchedEmailRe = regexp.MustCompile(`^([^\s@]+@[^\s@]+\.[^\s@]+)\s+(\S.*)$`)
-
-func maskUnmatched(text string) string {
-	if m := unmatchedEmailRe.FindStringSubmatch(text); m != nil {
-		rest := m[2]
-		fields := strings.Fields(rest)
-		if len(fields) >= 1 {
-			return m[1] + " " + maskedKey
-		}
-		return m[1] + " " + maskedKey
-	}
-	// A bare line could itself be a key; never echo it.
-	return maskedKey
 }
 
 func rowsJSON(recs []importer.ValidatedRecord) []importRowJSON {
@@ -165,7 +161,9 @@ func newProvidersJSONWithKeys(nps []*importer.NewProvider, showKeys bool) []any 
 func unmatchedJSON(lines []importer.UnmatchedLine) []importUnmatchedJSON {
 	out := make([]importUnmatchedJSON, 0, len(lines))
 	for _, u := range lines {
-		out = append(out, importUnmatchedJSON{Line: u.Line, Text: maskUnmatched(u.Text), Reason: u.Reason})
+		// Unrecognized lines are shown as plain text: they are not keys, so
+		// they are never masked.
+		out = append(out, importUnmatchedJSON{Line: u.Line, Text: u.Text, Reason: u.Reason, Provider: u.Provider})
 	}
 	return out
 }
@@ -307,6 +305,7 @@ func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	records := sess.Records
+	unmatchedOut := sess.Unmatched
 	if len(req.Records) > 0 {
 		var err error
 		records, err = applyEdits(sess.Records, req.Records)
@@ -319,6 +318,39 @@ func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if len(req.Unmatched) > 0 {
+		unmatched := sess.Unmatched
+		for _, ue := range req.Unmatched {
+			idx := -1
+			for i, u := range unmatched {
+				if u.Line == ue.Line {
+					idx = i
+					break
+				}
+			}
+			if idx < 0 {
+				writeErr(w, http.StatusBadRequest, fmt.Sprintf("unmatched line %d not found", ue.Line))
+				return
+			}
+			line := unmatched[idx]
+			unmatched = append(unmatched[:idx], unmatched[idx+1:]...)
+			if ue.Remove {
+				continue
+			}
+			records = append(records, importer.Record{
+				Line:     line.Line,
+				Email:    strings.TrimSpace(ue.Email),
+				Key:      strings.TrimSpace(ue.Key),
+				Provider: strings.TrimSpace(ue.Provider),
+				Status:   importer.StatusNeedsAttention,
+			})
+		}
+		if !h.Sessions.UpdateRecords(sess.ID, records) || !h.Sessions.UpdateUnmatched(sess.ID, unmatched) {
+			writeErr(w, http.StatusNotFound, "import session not found or expired")
+			return
+		}
+		unmatchedOut = unmatched
+	}
 	validated, ok := validate(h, w, records)
 	if !ok {
 		return
@@ -326,7 +358,7 @@ func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sess.ID,
 		"rows":       rowsJSONWithKeys(validated, true),
-		"unmatched":  unmatchedJSON(sess.Unmatched),
+		"unmatched":  unmatchedJSON(unmatchedOut),
 	})
 }
 
