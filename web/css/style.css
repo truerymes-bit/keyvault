@@ -338,13 +338,40 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .import-row.duplicate td.status.duplicate { color: #fbbf24; }
 .import-row.invalid td { color: #fca5a5; }
 
-/* import modal: never taller than 85vh; header and buttons stay pinned,
-   only the table and lists scroll */
-.overlay-card.import-modal { max-height: 85vh; display: flex; flex-direction: column; }
+/* import modal: width capped at 1100px, never taller than 85vh; header and
+   buttons stay pinned, only the vertical scroll region scrolls */
+.overlay-card.import-modal { width: min(1100px, 95vw); max-height: 85vh; display: flex; flex-direction: column; }
 .overlay-card.import-modal #overlay-row { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .overlay-card.import-modal .import-wizard { flex: 1; min-height: 0; }
 .overlay-card.import-modal .wizard-panel:not(.hidden) { flex: 1; min-height: 0; }
-.wizard-panel .wizard-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.overlay-card.import-modal .wizard-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+
+/* review table: fixed layout so it fits the modal at 1280px and 1440px with
+   no horizontal scrolling. Provider and remove columns are fixed width;
+   long emails and keys truncate with an ellipsis (full value is in the
+   title attribute and in the inline edit field). */
+#import-table { table-layout: fixed; width: 100%; }
+#import-table th:nth-child(1), #import-table td:nth-child(1) { width: 26%; }
+#import-table th:nth-child(2), #import-table td:nth-child(2) { width: 190px; }
+#import-table th:nth-child(3), #import-table td:nth-child(3) { width: 28%; }
+#import-table th:nth-child(5), #import-table td:nth-child(5) { width: 44px; }
+#import-table td { overflow: hidden; }
+#import-table .cell {
+  display: block; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+#import-table .inline-editing { width: 100%; }
+/* the review table never scrolls horizontally, at any width */
+.overlay-card.import-modal .table-wrap { overflow-x: hidden; }
+@media (max-width: 640px) {
+  /* narrow screens: email and key share what is left, status gets a
+     fixed narrow column so it wraps instead of overflowing */
+  #import-table th:nth-child(1), #import-table td:nth-child(1),
+  #import-table th:nth-child(3), #import-table td:nth-child(3) { width: auto; }
+  #import-table th:nth-child(2), #import-table td:nth-child(2) { width: 90px; }
+  #import-table th:nth-child(4), #import-table td:nth-child(4) { width: 72px; }
+  #import-table th:nth-child(5), #import-table td:nth-child(5) { width: 30px; }
+}
 
 /* provider dropdown and inline editors in the review table */
 .provider-select, .inline-editing {

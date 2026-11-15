@@ -952,13 +952,13 @@ function openImportModal() {
       const tr = document.createElement('tr');
       tr.className = 'import-row' + (r.valid ? '' : ' invalid') + (r.duplicate ? ' duplicate' : '');
       tr.dataset.index = r.index;
-      const keyCell = r.key ? `<span class="cell" data-field="key">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
+      const keyCell = r.key ? `<span class="cell" data-field="key" title="${escapeHtml(r.key)}">${escapeHtml(r.key)}</span>` : `<span class="cell" data-field="key">—</span>`;
       const statusHTML = !r.valid
         ? `Needs attention: ${reasonsFor(r).join(', ')}`
         : (r.duplicate ? 'Duplicate (skipped)' : escapeHtml(r.status));
       const statusClass = !r.valid ? 'invalid' : (r.duplicate ? 'duplicate' : r.status);
       tr.innerHTML = `
-        <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
+        <td><span class="cell" data-field="email" title="${escapeHtml(r.email)}">${escapeHtml(r.email)}</span></td>
         <td>${providerSelectHTML(r)}</td>
         <td>${keyCell}</td>
         <td class="status ${statusClass}">${statusHTML}</td>
