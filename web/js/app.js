@@ -76,6 +76,8 @@ function setOverlaySub(text) { $('#overlay-sub').textContent = text; }
 function showOverlay(title, sub, footer) {
   setOverlayTitle(title);
   setOverlaySub(sub);
+  const card = $('#overlay-backdrop .overlay-card');
+  if (card) card.classList.remove('import-modal');
   const prev = $('#overlay-on');
   if (prev) prev.remove();
   const footerEl = $('#overlay-row');
@@ -788,6 +790,7 @@ function closeEditModal() {
 function openImportModal() {
   // R5: Import is a 3-step modal wizard opened from the API Keys page.
   showOverlay('Import API Keys', 'Paste your provider sections, review, and import.', '');
+  $('#overlay-backdrop .overlay-card').classList.add('import-modal');
   const overlayRow = $('#overlay-row');
 
   overlayRow.innerHTML = `
@@ -821,28 +824,30 @@ function openImportModal() {
       </div>
 
       <div class="wizard-panel hidden" data-step="2">
-        <div class="table-wrap" style="max-height: 320px; overflow-y: auto; width: 100%;">
-          <table id="import-table">
-            <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div class="hide-keys-toggle" style="margin: 8px 0; font-size: 13px; color: var(--muted);">
-          <input id="import-keys-hide" type="checkbox">
-          <span>Hide keys</span>
-        </div>
-        <div id="import-unmatched" class="hidden"></div>
-        <div id="import-new-providers" class="hidden">
-          <div class="field">
-            <span class="small">New provider detected — confirm with one click to group its records:</span>
-            <ul class="new-providers"></ul>
+        <div class="wizard-scroll">
+          <div class="table-wrap">
+            <table id="import-table">
+              <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
-          <div class="btn_row">
-            <button class="btn" id="import-new-providers-cancel">Skip</button>
-            <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
+          <div class="hide-keys-toggle" style="margin: 8px 0; font-size: 13px; color: var(--muted);">
+            <input id="import-keys-hide" type="checkbox">
+            <span>Hide keys</span>
           </div>
+          <div id="import-unmatched" class="hidden"></div>
+          <div id="import-new-providers" class="hidden">
+            <div class="field">
+              <span class="small">New provider detected — confirm with one click to group its records:</span>
+              <ul class="new-providers"></ul>
+            </div>
+            <div class="btn_row">
+              <button class="btn" id="import-new-providers-cancel">Skip</button>
+              <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
+            </div>
+          </div>
+          <div id="import-dup-summary" class="hidden"></div>
         </div>
-        <div id="import-dup-summary" class="hidden"></div>
         <div class="btn-row">
           <button class="btn" id="import-back-2">Back</button>
           <button class="btn" id="import-cancel-2">Cancel</button>
@@ -1096,12 +1101,14 @@ function openImportModal() {
   $('#import-cancel-1').addEventListener('click', () => {
     $('#overlay-row').innerHTML = '';
     $('#overlay-backdrop').hidden = true;
+    $('#overlay-backdrop .overlay-card').classList.remove('import-modal');
     renderKeys();
   });
 
   $('#import-cancel-2').addEventListener('click', () => {
     $('#overlay-row').innerHTML = '';
     $('#overlay-backdrop').hidden = true;
+    $('#overlay-backdrop .overlay-card').classList.remove('import-modal');
     renderKeys();
   });
 
@@ -1141,12 +1148,14 @@ function openImportModal() {
   $('#import-cancel-3').addEventListener('click', () => {
     $('#overlay-row').innerHTML = '';
     $('#overlay-backdrop').hidden = true;
+    $('#overlay-backdrop .overlay-card').classList.remove('import-modal');
     renderKeys();
   });
 
   $('#import-close-3').addEventListener('click', () => {
     $('#overlay-row').innerHTML = '';
     $('#overlay-backdrop').hidden = true;
+    $('#overlay-backdrop .overlay-card').classList.remove('import-modal');
     renderKeys();
   });
 }
