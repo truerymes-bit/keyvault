@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/base64"
-	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -120,15 +119,33 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Write the decrypted snapshot to a temp file so SQLite can ATTACH it.
+	tmp, err := os.CreateTemp("", "keyvault-restore-*.db")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "create restore tmp: "+err.Error())
+		return
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(plaintext); err != nil {
+		tmp.Close()
+		writeErr(w, http.StatusInternalServerError, "write restore tmp: "+err.Error())
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "close restore tmp: "+err.Error())
+		return
+	}
+
 	dir := filepath.Dir(h.DBPath)
 	rollbackPath := dir + "/keyvault.db.rollback." + time.Now().UTC().Format("20060102-150405")
 	// Snapshot the current DB using VACUUM INTO for consistency.
-	if _, err := h.DB.Exec("VACUUM INTO ?", rollbackPath); err != nil {
+	if _, err := h.DB.Exec("VACUUM INTO '" + rollbackPath + "'"); err != nil {
 		writeErr(w, http.StatusInternalServerError, "create rollback snapshot: "+err.Error())
 		return
 	}
 
-	if err := replaceDBFile(h.DB, h.DBPath, plaintext); err != nil {
+	if err := restoreLive(h.DB, tmpName); err != nil {
 		writeErr(w, http.StatusInternalServerError, "apply restore: "+err.Error())
 		return
 	}
@@ -138,6 +155,36 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		"backup_date": time.Now().UTC().Format(time.RFC3339),
 		"rollback":    rollbackPath,
 	})
+}
+
+// restoreLive copies every row from the snapshot database into the live one.
+// ATTACH-based restore keeps the running server consistent: replacing the
+// file on disk would leave the open connection reading stale pages.
+func restoreLive(db *sql.DB, snapshotPath string) error {
+	if _, err := db.Exec("ATTACH ? AS restore_src", snapshotPath); err != nil {
+		return err
+	}
+	defer db.Exec("DETACH restore_src")
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// api_keys first: providers is RESTRICTed by the foreign key.
+	for _, q := range []string{
+		"DELETE FROM api_keys",
+		"DELETE FROM providers",
+		"DELETE FROM settings",
+		"INSERT INTO settings (key, value) SELECT key, value FROM restore_src.settings",
+		"INSERT INTO providers (id, name, notes, created_at, updated_at) SELECT id, name, notes, created_at, updated_at FROM restore_src.providers",
+		"INSERT INTO api_keys (id, email, provider_id, label, encrypted_key, nonce, fingerprint, created_at, updated_at) SELECT id, email, provider_id, label, encrypted_key, nonce, fingerprint, created_at, updated_at FROM restore_src.api_keys",
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // readArgonParams reads the argon2id parameters from settings.
@@ -178,27 +225,4 @@ const backupMagic = "KeyVault"
 // binaryReadU32 reads a little-endian uint32.
 func binaryReadU32(b []byte) uint32 {
 	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
-}
-
-// currentDBBytes reads the current database file bytes.
-func currentDBBytes(db *sql.DB, path string) []byte {
-	if db == nil || path == "" {
-		return nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-// replaceDBFile replaces the database file with the given bytes.
-func replaceDBFile(db *sql.DB, path string, data []byte) error {
-	if db == nil || path == "" {
-		return errors.New("no database path")
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
 }

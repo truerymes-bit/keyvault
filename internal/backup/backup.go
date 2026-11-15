@@ -102,7 +102,10 @@ func Encode(dbPath string, backupKey, salt []byte, t, m uint32, p uint8, dkLen u
 	return encodeEnvelope(salt, t, m, p, dkLen, nonce, header, ciphertext), nil
 }
 
-// Decode reads and decrypts a backup envelope, returning the plaintext SQL.
+// Decode reads and decrypts a backup envelope, returning the full original
+// database bytes (header + body). The envelope stores the first 1024 bytes of
+// the SQLite file as AAD, so it must be prepended back to reconstruct the
+// original database file.
 func Decode(b []byte, key []byte) ([]byte, error) {
 	if len(b) < 8+4+16+4+4+1+4+12 {
 		return nil, errors.New("backup file too short")
@@ -133,7 +136,9 @@ func Decode(b []byte, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decrypt: %w", err)
 	}
-	return plaintext, nil
+	// The header (first 1024 bytes) is not part of the ciphertext; the full
+	// database is header || body.
+	return append(append([]byte{}, header...), plaintext...), nil
 }
 
 func encodeEnvelope(salt []byte, t, m uint32, p uint8, dkLen uint32, nonce, header, ciphertext []byte) []byte {

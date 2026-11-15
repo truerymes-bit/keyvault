@@ -68,8 +68,14 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 		t.Fatalf("Decode: %v", err)
 	}
 
-	if len(plain) == 0 {
-		t.Fatal("decrypted SQL is empty")
+	// Decode must return the full original database bytes: the envelope
+	// stores the first 1024 bytes (SQLite file header) as AAD, so they must
+	// be prepended back to the decrypted body.
+	if len(plain) < 1024 {
+		t.Fatalf("decoded database is only %d bytes, want at least 1024", len(plain))
+	}
+	if string(plain[:16]) != "SQLite format 3\x00" {
+		t.Fatalf("decoded database is missing the SQLite header: %x", plain[:16])
 	}
 }
 
