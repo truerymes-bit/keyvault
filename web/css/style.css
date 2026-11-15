@@ -332,3 +332,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .wizard-panel { display: flex; flex-direction: column; gap: 12px; }
 .summary-box { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--panel-2); border-radius: var(--radius); border: 1px solid var(--border); }
 .summary-row { font-size: 14px; color: var(--text); }
+
+/* duplicate rows are marked and skipped by default at commit */
+.import-row.duplicate td { color: var(--muted); }
+.import-row.duplicate td.status.duplicate { color: #fbbf24; }
+.import-row.invalid td { color: #fca5a5; }

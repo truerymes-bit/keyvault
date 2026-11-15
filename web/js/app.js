@@ -904,7 +904,7 @@ function openImportModal() {
         <td><span class="cell" data-field="email">${escapeHtml(r.email)}</span></td>
         <td><span class="cell" data-field="provider">${escapeHtml(r.provider)}</span></td>
         <td>${keyCell}</td>
-        <td class="status ${r.status}">${escapeHtml(r.status)}</td>
+        <td class="status ${r.duplicate ? 'duplicate' : r.status}">${r.duplicate ? 'Duplicate (skipped)' : escapeHtml(r.status)}</td>
         <td><button class="btn tiny danger" data-act="remove" data-index="${r.index}">✕</button></td>`;
       tbody.appendChild(tr);
     }

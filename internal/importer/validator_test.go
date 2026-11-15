@@ -115,7 +115,7 @@ func TestDuplicateWithinFile(t *testing.T) {
 	recs := []Record{
 		{Line: 1, Email: "a@b.com", Key: "sk-same", Provider: "Gemini", Status: StatusOK},
 		{Line: 2, Email: "a@b.com", Key: "sk-same", Provider: "Gemini", Status: StatusOK},
-		{Line: 3, Email: "a@b.com", Key: "sk-same", Provider: "Other", Status: StatusOK},
+		{Line: 3, Email: "a@b.com", Key: "sk-same", Provider: "Other", Status: StatusOK}, // duplicate under any provider
 		{Line: 4, Email: "c@d.com", Key: "sk-same", Provider: "Gemini", Status: StatusOK},
 	}
 	out, err := ValidateRecords(db, hmacKey(), recs)
@@ -128,8 +128,8 @@ func TestDuplicateWithinFile(t *testing.T) {
 	if !out[1].Duplicate || out[1].DuplicateSource != "file" {
 		t.Fatalf("record 1 = %+v", out[1])
 	}
-	if out[2].Duplicate {
-		t.Fatal("same key under different provider is not a duplicate")
+	if !out[2].Duplicate || out[2].DuplicateSource != "file" {
+		t.Fatalf("same key under different provider is a duplicate: %+v", out[2])
 	}
 	if out[3].Duplicate {
 		t.Fatal("same key under different email is not a duplicate")
@@ -151,8 +151,8 @@ func TestDuplicateAgainstDatabase(t *testing.T) {
 
 	recs := []Record{
 		{Line: 1, Email: "a@b.com", Key: "sk-known", Provider: "Gemini", Status: StatusOK},
-		{Line: 2, Email: "a@b.com", Key: "sk-known", Provider: "Other", Status: StatusOK},
-		{Line: 3, Email: "A@B.COM", Key: "sk-known", Provider: "gemini", Status: StatusOK}, // case-insensitive match
+		{Line: 2, Email: "a@b.com", Key: "sk-known", Provider: "Other", Status: StatusOK},  // matches DB under any provider
+		{Line: 3, Email: "A@B.COM", Key: "sk-known", Provider: "gemini", Status: StatusOK}, // in-file dup of record 0
 		{Line: 4, Email: "a@b.com", Key: "sk-other", Provider: "Gemini", Status: StatusOK},
 	}
 	out, err := ValidateRecords(db, hmacKey(), recs)
@@ -162,8 +162,8 @@ func TestDuplicateAgainstDatabase(t *testing.T) {
 	if !out[0].Duplicate || out[0].DuplicateSource != "database" {
 		t.Fatalf("record 0 = %+v", out[0])
 	}
-	if out[1].Duplicate {
-		t.Fatal("different provider is not a duplicate")
+	if !out[1].Duplicate || out[1].DuplicateSource != "file" {
+		t.Fatalf("same key under different provider is duplicate (in-file wins): %+v", out[1])
 	}
 	if !out[2].Duplicate || out[2].DuplicateSource != "file" {
 		t.Fatalf("record 2 (in-file dup, case-insensitive) = %+v", out[2])

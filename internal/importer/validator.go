@@ -33,8 +33,10 @@ func Fingerprint(hmacSubkey, plaintext []byte) []byte {
 
 // ValidateRecords validates emails and keys, assigns fingerprints, and flags
 // duplicates both within the batch and against existing database records.
-// Duplicate matching uses email + provider name + fingerprint (case-insensitive
-// for email and provider). No plaintext hash is stored or returned.
+// A record is a duplicate when its email and key fingerprint match an
+// existing key under any provider, or match another record in the same file.
+// Email is matched case-insensitively; the provider never participates.
+// No plaintext hash is stored or returned.
 func ValidateRecords(db *sql.DB, hmacSubkey []byte, records []Record) ([]ValidatedRecord, error) {
 	out := make([]ValidatedRecord, 0, len(records))
 	seen := make(map[string]int, len(records))
@@ -42,7 +44,6 @@ func ValidateRecords(db *sql.DB, hmacSubkey []byte, records []Record) ([]Validat
 	for i, rec := range records {
 		vr := ValidatedRecord{Record: rec, Valid: true}
 		email := strings.ToLower(strings.TrimSpace(rec.Email))
-		provider := strings.ToLower(strings.TrimSpace(rec.Provider))
 
 		if !emailRe.MatchString(strings.TrimSpace(rec.Email)) {
 			vr.Valid = false
@@ -59,7 +60,7 @@ func ValidateRecords(db *sql.DB, hmacSubkey []byte, records []Record) ([]Validat
 
 		if strings.TrimSpace(rec.Key) != "" {
 			vr.Fingerprint = Fingerprint(hmacSubkey, []byte(rec.Key))
-			batchKey := email + "|" + provider + "|" + string(vr.Fingerprint)
+			batchKey := email + "|" + string(vr.Fingerprint)
 			if first, dup := seen[batchKey]; dup {
 				vr.Duplicate = true
 				vr.DuplicateSource = "file"
@@ -71,18 +72,17 @@ func ValidateRecords(db *sql.DB, hmacSubkey []byte, records []Record) ([]Validat
 		out = append(out, vr)
 	}
 
-	// Database duplicate check. Only records with a fingerprint and a
-	// provider can match.
+	// Database duplicate check. Only records with a fingerprint can match;
+	// the provider never participates.
 	for i := range out {
-		if out[i].Duplicate || len(out[i].Fingerprint) == 0 || strings.TrimSpace(out[i].Provider) == "" {
+		if out[i].Duplicate || len(out[i].Fingerprint) == 0 {
 			continue
 		}
 		var id int64
 		err := db.QueryRow(`
 SELECT k.id FROM api_keys k
-JOIN providers p ON p.id = k.provider_id
-WHERE lower(k.email) = lower(?) AND lower(p.name) = lower(?) AND k.fingerprint = ?
-LIMIT 1`, strings.TrimSpace(out[i].Email), strings.TrimSpace(out[i].Provider), out[i].Fingerprint).Scan(&id)
+WHERE lower(k.email) = lower(?) AND k.fingerprint = ?
+LIMIT 1`, strings.TrimSpace(out[i].Email), out[i].Fingerprint).Scan(&id)
 		if err == sql.ErrNoRows {
 			continue
 		}

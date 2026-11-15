@@ -287,19 +287,22 @@ func TestImportCommitCountsAndDatabaseWrites(t *testing.T) {
 	v := decode(t, rec)
 	// Since R4, unrecognized headings without an email become candidate
 	// providers instead of unmatched lines, and new providers are created on
-	// commit. "Unknown Section" is now a candidate provider, so:
-	// - 6 imports (erin is now under "Unknown Section", not attention)
-	// - 2 skips (alice dup in-file, db-alice DB dup)
-	// - 2 duplicates, 0 attention, 2 providers_created (OpenRouter + Unknown Section)
+	// commit. "Unknown Section" is now a candidate provider. Duplicate
+	// matching ignores the provider: alice AIza-aaa (Gemini) and alice
+	// AIza-aaa (OpenRouter) are the same key, so alice@OpenRouter is a
+	// file duplicate of alice@Gemini:
+	// - 5 imports (bob, carol, dave, erin, alice@Gemini)
+	// - 3 skips (alice@OpenRouter file dup, alice@Gemini file dup, db-alice DB dup)
+	// - 3 duplicates, 0 attention, 2 providers_created (OpenRouter + Unknown Section)
 	// - 1 unmatched (only "broken @ line").
-	if got := int(v["imported"].(float64)); got != 6 {
-		t.Fatalf("imported = %d, want 6 (%v)", got, v)
+	if got := int(v["imported"].(float64)); got != 5 {
+		t.Fatalf("imported = %d, want 5 (%v)", got, v)
 	}
-	if got := int(v["skipped"].(float64)); got != 2 {
-		t.Fatalf("skipped = %d, want 2 (%v)", got, v)
+	if got := int(v["skipped"].(float64)); got != 3 {
+		t.Fatalf("skipped = %d, want 3 (%v)", got, v)
 	}
-	if got := int(v["duplicates"].(float64)); got != 2 {
-		t.Fatalf("duplicates = %d, want 2 (%v)", got, v)
+	if got := int(v["duplicates"].(float64)); got != 3 {
+		t.Fatalf("duplicates = %d, want 3 (%v)", got, v)
 	}
 	if got := int(v["attention"].(float64)); got != 0 {
 		t.Fatalf("attention = %d, want 0 (%v)", got, v)
@@ -353,8 +356,8 @@ func TestImportCommitReviewMode(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected duplicates_review in %v", v)
 	}
-	if len(review) != 1 { // only the in-file alice dup; no DB dups in fresh env
-		t.Fatalf("duplicates_review = %d, want 1 (%v)", len(review), v)
+	if len(review) != 2 { // alice@OpenRouter + alice@Gemini; no DB dups in fresh env
+		t.Fatalf("duplicates_review = %d, want 2 (%v)", len(review), v)
 	}
 	if strings.Contains(rec.Body.String(), "AIza-aaa") {
 		t.Fatal("review response leaks plaintext")
@@ -670,5 +673,204 @@ func TestImportSuggestionOfferedAndAccepted(t *testing.T) {
 	}
 	if got := rows[0].(map[string]any)["provider"]; got != "Gemini" {
 		t.Fatalf("provider after accept = %v, want Gemini", got)
+	}
+}
+
+// TestReImportSameFileAllDuplicates covers the R5 duplicate failure: a file
+// that was already imported must report 0 imported and every record as a
+// duplicate. A record is a duplicate when its email and key fingerprint
+// match an existing key under any provider, or another record in the same
+// file, so the provider never participates.
+func TestReImportSameFileAllDuplicates(t *testing.T) {
+	e := newImportEnv(t)
+
+	// Part A: plain re-import of the same file.
+	// Fixture, line by line:
+	//   1 "Gemini API Key"              -> known heading Gemini
+	//   2 "alice@example.com sk-re-a1" -> record under Gemini
+	//   3 "OpenRouter:"                -> known heading OpenRouter
+	//   4 "bob@example.com sk-re-b1"   -> record under OpenRouter
+	//   5 "Jina.ai"                    -> unknown heading -> new provider Jina.ai
+	//   6 "carol@example.com sk-re-c1" -> record under Jina.ai
+	// Arithmetic: first commit -> 3 imported, 0 duplicates, 2 providers created
+	// (OpenRouter, Jina.ai; Gemini is already seeded).
+	// Second commit of the same text -> 0 imported, 3 skipped,
+	// 3 duplicates, api_keys stays 3.
+	const fixtureA = "Gemini API Key\nalice@example.com sk-re-a1\nOpenRouter:\nbob@example.com sk-re-b1\nJina.ai\ncarol@example.com sk-re-c1\n"
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureA)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse A: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit A: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 3 {
+		t.Fatalf("A imported = %d, want 3 (%v)", got, v)
+	}
+	if got := int(v["duplicates"].(float64)); got != 0 {
+		t.Fatalf("A duplicates = %d, want 0 (%v)", got, v)
+	}
+	if got := int(v["providers_created"].(float64)); got != 2 {
+		t.Fatalf("A providers_created = %d, want 2 (%v)", got, v)
+	}
+
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureA)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-parse A: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 3 {
+		t.Fatalf("re-parse A rows = %d, want 3", len(rows))
+	}
+	for i, r := range rows {
+		if dup, _ := r.(map[string]any)["duplicate"].(bool); !dup {
+			t.Fatalf("re-parse A row %d duplicate = false, want true: %v", i, r)
+		}
+	}
+	sid = v["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-commit A: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 0 {
+		t.Fatalf("A re-imported = %d, want 0 (%v)", got, v)
+	}
+	if got := int(v["skipped"].(float64)); got != 3 {
+		t.Fatalf("A re-skipped = %d, want 3 (%v)", got, v)
+	}
+	if got := int(v["duplicates"].(float64)); got != 3 {
+		t.Fatalf("A re-duplicates = %d, want 3 (%v)", got, v)
+	}
+	var count int
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("api_keys count after re-import = %d, want 3", count)
+	}
+
+	// Part B: the heading resolves to a provider that was renamed after the
+	// first import.
+	// Fixture, line by line:
+	//   1 "HuggingFace"                 -> unknown heading -> new provider
+	//   2 "daniel@example.com sk-re-b1" -> record under HuggingFace
+	// Arithmetic: first commit -> 1 imported, providers_created 1. Rename
+	// HuggingFace -> HF in the database. Second commit of the same text:
+	// the record still says provider "HuggingFace", but the key exists under
+	// HF, so it is a duplicate under any provider -> 0 imported, 1 skipped,
+	// 1 duplicate.
+	const fixtureB = "HuggingFace\ndaniel@example.com sk-re-b1\n"
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureB)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse B: %d %s", rec.Code, rec.Body)
+	}
+	sid = decode(t, rec)["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit B: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 1 {
+		t.Fatalf("B imported = %d, want 1 (%v)", got, v)
+	}
+	if _, err := e.db.Exec("UPDATE providers SET name = 'HF' WHERE name = 'HuggingFace'"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureB)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-parse B: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	rows, _ = v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("re-parse B rows = %d, want 1", len(rows))
+	}
+	if dup, _ := rows[0].(map[string]any)["duplicate"].(bool); !dup {
+		t.Fatalf("re-parse B row duplicate = false, want true: %v", rows[0])
+	}
+	sid = v["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-commit B: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 0 {
+		t.Fatalf("B re-imported = %d, want 0 (%v)", got, v)
+	}
+	if got := int(v["skipped"].(float64)); got != 1 {
+		t.Fatalf("B re-skipped = %d, want 1 (%v)", got, v)
+	}
+	if got := int(v["duplicates"].(float64)); got != 1 {
+		t.Fatalf("B re-duplicates = %d, want 1 (%v)", got, v)
+	}
+	if got := int(v["providers_created"].(float64)); got != 0 {
+		t.Fatalf("B re-providers_created = %d, want 0 (%v)", got, v)
+	}
+
+	// Part C: the heading resolved through a one-click "Did you mean" accept
+	// on the first import, so the key lives under a provider the file never
+	// names. Second import without accepting: 0 imported, 1 skipped,
+	// 1 duplicate.
+	// Fixture, line by line:
+	//   1 "Gemmini"                -> unknown heading, suggestion "Gemini"
+	//   2 "emma@example.com sk-re-c1" -> record under Gemmini
+	const fixtureC = "Gemmini\nemma@example.com sk-re-c1\n"
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureC)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse C: %d %s", rec.Code, rec.Body)
+	}
+	sid = decode(t, rec)["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"records":[{"index":0,"provider":"Gemini"}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accept C: %d %s", rec.Code, rec.Body)
+	}
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("commit C: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 1 {
+		t.Fatalf("C imported = %d, want 1 (%v)", got, v)
+	}
+
+	rec = e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixtureC)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-parse C: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	rows, _ = v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("re-parse C rows = %d, want 1", len(rows))
+	}
+	if dup, _ := rows[0].(map[string]any)["duplicate"].(bool); !dup {
+		t.Fatalf("re-parse C row duplicate = false, want true: %v", rows[0])
+	}
+	sid = v["session_id"].(string)
+	rec = e.do(http.MethodPost, "/api/import/commit", `{"session_id":`+jsonString(sid)+`,"duplicate_mode":"skip"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-commit C: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	if got := int(v["imported"].(float64)); got != 0 {
+		t.Fatalf("C re-imported = %d, want 0 (%v)", got, v)
+	}
+	if got := int(v["skipped"].(float64)); got != 1 {
+		t.Fatalf("C re-skipped = %d, want 1 (%v)", got, v)
+	}
+	if got := int(v["duplicates"].(float64)); got != 1 {
+		t.Fatalf("C re-duplicates = %d, want 1 (%v)", got, v)
+	}
+	if err := e.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Fatalf("final api_keys count = %d, want 5 (3 from A, 1 from B, 1 from C)", count)
 	}
 }
