@@ -57,3 +57,7 @@ Tasks marked `[-]` in PLAN.md are deferred. Skip them. Google Drive integration 
 - Modals for setup and unlock cannot be dismissed by clicking outside or pressing Escape.
 - Never copy masked text. Copy always uses the revealed key.
 - Test at 1440x900 and 390px wide, not only on a large display.
+
+## UI authority
+
+docs/ui.md is the authority for how the frontend looks and behaves, and docs/mockup.png is its picture. If you can view images, read the picture as well. When docs/ui.md and docs/spec.md disagree about the UI, docs/ui.md wins. Do not remove or move a feature that docs/ui.md does not mention without asking the user.

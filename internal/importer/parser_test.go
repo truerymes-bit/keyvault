@@ -337,12 +337,12 @@ func TestHTTPHeaderLinesAreNotProviders(t *testing.T) {
 func TestKeyOnlyLineUnderHeadingNeedsAttention(t *testing.T) {
 	// Fixture, line by line:
 	//   1 "Jina.ai"                -> unknown heading candidate
-	//   2 "jina_1bf4x9k2m7q1Fdj2" -> key-only line, no email
+	//   2 "jina_FAKE00000000001" -> key-only line, no email
 	//   3 "HuggingFace"            -> unknown heading candidate
-	//   4 "hf_gcXz8q2m7p1zFG"      -> key-only line, no email
+	//   4 "hf_FAKE00000000001"      -> key-only line, no email
 	// Arithmetic: 2 records, both with empty email and status needs_attention;
 	// 2 new providers (Jina.ai, HuggingFace); 0 unmatched.
-	input := "Jina.ai\njina_1bf4x9k2m7q1Fdj2\nHuggingFace\nhf_gcXz8q2m7p1zFG\n"
+	input := "Jina.ai\njina_FAKE00000000001\nHuggingFace\nhf_FAKE00000000001\n"
 	res := ParseTXT(input)
 	if len(res.Records) != 2 {
 		t.Fatalf("records = %d, want 2: %+v", len(res.Records), res.Records)
@@ -379,12 +379,12 @@ func TestRealWorldHeadings(t *testing.T) {
 	//   5 "ELEVENLABS"               -> case-insensitive match -> ElevenLabs
 	//   6 "d@e.com sk-el-1234..."    -> record under ElevenLabs
 	//   7 "Jina.ai"                  -> new provider
-	//   8 "jina_1bf4x9k2m7q1Fdj2"    -> key-only record, empty email
+	//   8 "jina_FAKE00000000001"    -> key-only record, empty email
 	//   9 "HuggingFace"              -> new provider
-	//  10 "hf_gcXz8q2m7p1zFG"        -> key-only record, empty email
+	//  10 "hf_FAKE00000000001"        -> key-only record, empty email
 	// Arithmetic: 5 records, 3 new providers (Gemmini, Jina.ai, HuggingFace),
 	// 0 unmatched.
-	input := "Gemmini API Keys:\na@b.com AIzaSyD-1234567890abcdefghij\nOpenRouter\nb@c.com sk-or-1234567890abcdef\nELEVENLABS\nd@e.com sk-el-1234567890abcdef\nJina.ai\njina_1bf4x9k2m7q1Fdj2\nHuggingFace\nhf_gcXz8q2m7p1zFG\n"
+	input := "Gemmini API Keys:\na@b.com AIzaSyD-1234567890abcdefghij\nOpenRouter\nb@c.com sk-or-1234567890abcdef\nELEVENLABS\nd@e.com sk-el-1234567890abcdef\nJina.ai\njina_FAKE00000000001\nHuggingFace\nhf_FAKE00000000001\n"
 	res := ParseTXT(input)
 	if len(res.Records) != 5 {
 		t.Fatalf("records = %d, want 5: %+v", len(res.Records), res.Records)
@@ -460,12 +460,12 @@ func TestRealFileHeadingLines(t *testing.T) {
 	//   7 "ENDPOINT:"                  -> heading candidate
 	//   8 "https://api.example.com/v1" -> unrecognized (http): 7 not confirmed
 	//   9 "Jina.ai"                    -> heading candidate
-	//  10 "jina_1bf4x9k2m7q1Fdj2"      -> key-only record: 9 confirmed
+	//  10 "jina_FAKE00000000001"      -> key-only record: 9 confirmed
 	//  11 "HuggingFace"                -> heading candidate
-	//  12 "hf_gcXz8q2m7p1zFG"          -> key-only record: 11 confirmed
+	//  12 "hf_FAKE00000000001"          -> key-only record: 11 confirmed
 	// Arithmetic: 2 records (empty email, needs_attention), 2 new providers
 	// (Jina.ai, HuggingFace), 8 unmatched lines (1-8), 0 other providers.
-	input := "Content-Type\napplication/json\nAuthorization\nBearer $OPENROUTER_API_KEY\nModel\nopenrouter/free\nENDPOINT:\nhttps://api.example.com/v1\nJina.ai\njina_1bf4x9k2m7q1Fdj2\nHuggingFace\nhf_gcXz8q2m7p1zFG\n"
+	input := "Content-Type\napplication/json\nAuthorization\nBearer $OPENROUTER_API_KEY\nModel\nopenrouter/free\nENDPOINT:\nhttps://api.example.com/v1\nJina.ai\njina_FAKE00000000001\nHuggingFace\nhf_FAKE00000000001\n"
 	res := ParseTXT(input)
 	if len(res.Records) != 2 {
 		t.Fatalf("records = %d, want 2: %+v", len(res.Records), res.Records)
@@ -535,8 +535,8 @@ func TestKeyOnlyTokenRule(t *testing.T) {
 		line string
 		want bool
 	}{
-		{"jina_1bf4x9k2m7q1Fdj2", true}, // 21 chars, underscore + digits
-		{"hf_gcXz8q2m7p1zFG", true},     // 17 chars
+		{"jina_FAKE00000000001", true}, // 21 chars, underscore + digits
+		{"hf_FAKE00000000001", true},     // 17 chars
 		{"1234567890123456", true},      // exactly 16 digits
 		{"AIzaFAKE0001abcdefg", true},   // 19 chars, digits required
 		{"abcdefghijklmnop", false},     // exactly 16 letters, no digit
