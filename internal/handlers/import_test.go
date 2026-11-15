@@ -764,6 +764,94 @@ func TestImportSuggestionOfferedAndAccepted(t *testing.T) {
 	}
 }
 
+// TestImportValidateNewProvidersParse covers defect 1 (a): parse returns the
+// Gemmini typo as a new-provider candidate with the Gemini suggestion.
+// Exact input: a record before any heading, "Gemini API Keys:" with a record,
+// "Gemmini API Keys:" with a record.
+func TestImportValidateNewProvidersParse(t *testing.T) {
+	const fixture = "orphan@example.com sk-orphan\nGemini API Keys:\ngemini@example.com sk-gemini\nGemmini API Keys:\ngemmini@example.com sk-gemmini\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	nps, _ := v["new_providers"].([]any)
+	if len(nps) != 1 {
+		t.Fatalf("new_providers = %d, want 1 (%v)", len(nps), v)
+	}
+	np := nps[0].(map[string]any)
+	if np["name"] != "Gemmini" {
+		t.Fatalf("name = %v, want Gemmini", np["name"])
+	}
+	if np["suggestion"] != "Gemini" {
+		t.Fatalf("suggestion = %v, want Gemini", np["suggestion"])
+	}
+	recs, _ := np["records"].([]any)
+	if len(recs) != 1 {
+		t.Fatalf("Gemmini records = %d, want 1", len(recs))
+	}
+}
+
+// TestImportValidateNewProvidersKeptAfterOtherEdit covers defect 1 (b):
+// validate after editing a different row still returns the Gemmini candidate
+// with its suggestion and current record count.
+func TestImportValidateNewProvidersKeptAfterOtherEdit(t *testing.T) {
+	const fixture = "orphan@example.com sk-orphan\nGemini API Keys:\ngemini@example.com sk-gemini\nGemmini API Keys:\ngemmini@example.com sk-gemmini\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+
+	// Edit row 0 (the record before any heading), not the Gemmini row.
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"records":[{"index":0,"email":"orphan2@example.com"}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	nps, _ := v["new_providers"].([]any)
+	if len(nps) != 1 {
+		t.Fatalf("new_providers = %d, want 1 after editing another row (%v)", len(nps), v)
+	}
+	np := nps[0].(map[string]any)
+	if np["name"] != "Gemmini" || np["suggestion"] != "Gemini" {
+		t.Fatalf("candidate = %v, want name Gemmini suggestion Gemini", np)
+	}
+	recs, _ := np["records"].([]any)
+	if len(recs) != 1 {
+		t.Fatalf("Gemmini records = %d, want 1", len(recs))
+	}
+}
+
+// TestImportValidateNewProvidersDroppedAfterRename covers defect 1 (c):
+// validate after renaming the Gemmini record to Gemini returns no new
+// providers, because no current record is under the candidate name.
+func TestImportValidateNewProvidersDroppedAfterRename(t *testing.T) {
+	const fixture = "orphan@example.com sk-orphan\nGemini API Keys:\ngemini@example.com sk-gemini\nGemmini API Keys:\ngemmini@example.com sk-gemmini\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	sid := decode(t, rec)["session_id"].(string)
+
+	// Rename the Gemmini record (index 2) to Gemini.
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"records":[{"index":2,"provider":"Gemini"}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	nps, _ := v["new_providers"].([]any)
+	if len(nps) != 0 {
+		t.Fatalf("new_providers = %d, want 0 after renaming Gemmini to Gemini (%v)", len(nps), v)
+	}
+}
+
 // TestReImportSameFileAllDuplicates covers the R5 duplicate failure: a file
 // that was already imported must report 0 imported and every record as a
 // duplicate. A record is a duplicate when its email and key fingerprint

@@ -10,11 +10,12 @@ import (
 // ImportSession holds parsed rows in memory under an import session ID.
 // Keys exist only in memory and only until commit or expiry.
 type ImportSession struct {
-	ID        string
-	Format    string
-	CreatedAt time.Time
-	Records   []Record
-	Unmatched []UnmatchedLine
+	ID           string
+	Format       string
+	CreatedAt    time.Time
+	Records      []Record
+	Unmatched    []UnmatchedLine
+	NewProviders []*NewProvider
 }
 
 // SessionStore keeps import sessions in memory with a TTL.
@@ -42,7 +43,7 @@ func (s *SessionStore) newID() (string, error) {
 }
 
 // Create stores a new session and returns it.
-func (s *SessionStore) Create(format string, records []Record, unmatched []UnmatchedLine) (*ImportSession, error) {
+func (s *SessionStore) Create(format string, records []Record, unmatched []UnmatchedLine, newProviders []*NewProvider) (*ImportSession, error) {
 	id, err := s.newID()
 	if err != nil {
 		return nil, err
@@ -50,7 +51,7 @@ func (s *SessionStore) Create(format string, records []Record, unmatched []Unmat
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pruneLocked()
-	sess := &ImportSession{ID: id, Format: format, CreatedAt: s.now(), Records: records, Unmatched: unmatched}
+	sess := &ImportSession{ID: id, Format: format, CreatedAt: s.now(), Records: records, Unmatched: unmatched, NewProviders: newProviders}
 	s.sessions[id] = sess
 	return sess, nil
 }

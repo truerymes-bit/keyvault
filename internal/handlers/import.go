@@ -272,7 +272,7 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sess, err := h.Sessions.Create(req.Format, res.Records, res.Unmatched)
+	sess, err := h.Sessions.Create(req.Format, res.Records, res.Unmatched, res.NewProviders)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
@@ -355,11 +355,29 @@ func (h *ImportHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id": sess.ID,
-		"rows":       rowsJSONWithKeys(validated, true),
-		"unmatched":  unmatchedJSON(unmatchedOut),
-	})
+	var activeNewProviders []*importer.NewProvider
+	for _, np := range sess.NewProviders {
+		var matchingRecords []importer.Record
+		for _, r := range records {
+			if r.Provider == np.Name {
+				matchingRecords = append(matchingRecords, r)
+			}
+		}
+		if len(matchingRecords) > 0 {
+			activeNewProviders = append(activeNewProviders, &importer.NewProvider{
+				Name:       np.Name,
+				Suggestion: np.Suggestion,
+				Records:    matchingRecords,
+			})
+		}
+	}
+	resp := map[string]any{
+		"session_id":    sess.ID,
+		"rows":          rowsJSONWithKeys(validated, true),
+		"unmatched":     unmatchedJSON(unmatchedOut),
+		"new_providers": newProvidersJSONWithKeys(activeNewProviders, true),
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // Commit handles POST /api/import/commit. Duplicate modes:
