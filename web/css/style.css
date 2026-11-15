@@ -237,8 +237,7 @@ button { cursor: pointer; }
 }
 .hide-keys-toggle input:checked + span { color: var(--text); }
 
-/* hide key values when the toggle is on */
-#view-root.hide-keys .key-field { display: none; }
+/* hide key values when the import review toggle is on */
 #overlay-row.hide-keys .cell[data-field="key"] { display: none; }
 
 /* ---------- toast ---------- */

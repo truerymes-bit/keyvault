@@ -629,3 +629,46 @@ func TestImportRecordBeforeHeadingNeverSaved(t *testing.T) {
 		t.Fatalf("api_keys count = %d, want 0", count)
 	}
 }
+
+// TestImportSuggestionOfferedAndAccepted covers item 11: a misspelled heading
+// is offered as a new provider with a "Did you mean" suggestion, and
+// accepting it renames the grouped records. The correction is never silent.
+func TestImportSuggestionOfferedAndAccepted(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "Gemmini API Keys:"       -> typo -> new provider "Gemmini", suggestion "Gemini"
+	//   2 "a@b.com AIzaSyD-1234..." -> record under Gemmini
+	// Arithmetic: parse -> 1 row, 0 unmatched, 1 new provider whose
+	// suggestion is "Gemini". Validate with a provider edit on index 0 ->
+	// the row's provider becomes "Gemini".
+	const fixture = "Gemmini API Keys:\na@b.com AIzaSyD-1234567890abcdefghij\n"
+	e := newImportEnv(t)
+
+	rec := e.do(http.MethodPost, "/api/import/parse", `{"text":`+jsonString(fixture)+`,"format":"txt"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body)
+	}
+	v := decode(t, rec)
+	np, _ := v["new_providers"].([]any)
+	if len(np) != 1 {
+		t.Fatalf("new providers = %d, want 1", len(np))
+	}
+	prov := np[0].(map[string]any)
+	if prov["name"] != "Gemmini" || prov["suggestion"] != "Gemini" {
+		t.Fatalf("new provider = %v, want name Gemmini suggestion Gemini", prov)
+	}
+	sid := v["session_id"].(string)
+
+	// One-click accept: send the suggested provider as an edit for row 0.
+	rec = e.do(http.MethodPost, "/api/import/validate", `{"session_id":`+jsonString(sid)+`,"records":[{"index":0,"provider":"Gemini"}]}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d %s", rec.Code, rec.Body)
+	}
+	v = decode(t, rec)
+	rows, _ := v["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if got := rows[0].(map[string]any)["provider"]; got != "Gemini" {
+		t.Fatalf("provider after accept = %v, want Gemini", got)
+	}
+}

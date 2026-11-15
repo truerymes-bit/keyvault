@@ -293,10 +293,6 @@ async function renderKeys() {
         <input id="key-search" placeholder="Search email, provider or label…" autocomplete="off">
         <span id="key-search-count" class="small"></span>
       </div>
-      <label class="hide-keys-toggle">
-        <input id="keys-hide" type="checkbox">
-        <span>Hide keys</span>
-      </label>
       <div class="btn-row" style="justify-content:flex-end;">
         <button class="btn" id="keys-add-key">Add key</button>
         <button class="btn primary" id="keys-import">Import</button>
@@ -337,9 +333,6 @@ async function renderKeys() {
   searchInput.addEventListener('input', () => {
     clearTimeout(searchInput._t);
     searchInput._t = setTimeout(() => applyFilter(searchInput.value), 200);
-  });
-  $('#keys-hide').addEventListener('change', () => {
-    $('#view-root').classList.toggle('hide-keys', $('#keys-hide').checked);
   });
 
   try {
@@ -1019,6 +1012,31 @@ function openImportModal() {
     }).catch(() => {});
   };
 
+  const acceptSuggestion = (np) => {
+    // Rename every record grouped under the misspelled heading to the
+    // suggested known provider, then re-validate so the server session and
+    // the review table agree. The correction is never silent: it only happens
+    // when the user clicks the suggestion.
+    const edits = [];
+    tbody.querySelectorAll('tr.import-row').forEach((tr) => {
+      const cell = tr.querySelector('[data-field="provider"]');
+      if (cell && cell.textContent.trim() === np.name) {
+        edits.push({ index: Number(tr.dataset.index), provider: np.suggestion });
+      }
+    });
+    if (!edits.length) { toast('No rows to rename', 'error'); return; }
+    api('/api/import/validate', { method: 'POST', json: { session_id: session, records: edits } }, { 'X-CSRF-Token': state.csrf })
+      .then((data) => {
+        session = data.session_id;
+        edits.forEach((e) => cellInputs.set(e.index + '_provider', e.provider));
+        renderRows(data.rows);
+        const box = newProvEl.querySelector(`[data-suggest="${np.name}"]`);
+        if (box) box.innerHTML = `<span class="small">Using <strong>${escapeHtml(np.suggestion)}</strong>.</span>`;
+        toast(`Renamed ${edits.length} record${edits.length !== 1 ? 's' : ''} to ${np.suggestion}.`, 'success');
+      })
+      .catch((err) => toast(err.message, 'error'));
+  };
+
   const renderNewProviders = (nps) => {
     if (!nps || !nps.length) {
       newProvEl.classList.add('hidden');
@@ -1027,7 +1045,13 @@ function openImportModal() {
     newProvEl.classList.remove('hidden');
     const items = nps.map((np) => {
       const recs = np.records && np.records.length ? `<span class="small"> (${np.records.length} records)</span>` : '';
-      return `<li><strong>${escapeHtml(np.name)}</strong>${recs}</li>`;
+      let suggest = '';
+      if (np.suggestion) {
+        // escapeHtml covers every interpolated value, including the
+        // data-* attribute values, so the heading text cannot break out.
+        suggest = `<div class="suggest" data-suggest="${escapeHtml(np.name)}"><span class="small">Did you mean <strong>${escapeHtml(np.suggestion)}</strong>?</span> <button class="btn tiny" data-accept="${escapeHtml(np.name)}">Use ${escapeHtml(np.suggestion)}</button></div>`;
+      }
+      return `<li><strong>${escapeHtml(np.name)}</strong>${recs}${suggest}</li>`;
     }).join('');
     newProvEl.innerHTML = `
       <div class="field">
@@ -1039,6 +1063,10 @@ function openImportModal() {
         <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
       </div>
     `;
+    newProvEl.querySelectorAll('[data-accept]').forEach((btn) => {
+      const np = nps.find((n) => n.name === btn.dataset.accept);
+      if (np) btn.addEventListener('click', () => acceptSuggestion(np));
+    });
     newProvEl.querySelector('#import-new-providers-cancel').addEventListener('click', () => {
       newProvEl.classList.add('hidden');
     });

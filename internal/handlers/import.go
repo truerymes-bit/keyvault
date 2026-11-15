@@ -150,10 +150,14 @@ func newProvidersJSONWithKeys(nps []*importer.NewProvider, showKeys bool) []any 
 			}
 			records[j] = rec
 		}
-		out[i] = map[string]any{
+		item := map[string]any{
 			"name":    np.Name,
 			"records": records,
 		}
+		if np.Suggestion != "" {
+			item["suggestion"] = np.Suggestion
+		}
+		out[i] = item
 	}
 	return out
 }

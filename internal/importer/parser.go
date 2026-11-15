@@ -29,10 +29,13 @@ type UnmatchedLine struct {
 // NewProvider is a heading that looked like a provider but is not in the
 // built-in or custom provider list. Records parsed under it are grouped here
 // for the user to confirm with one click, instead of being reported as
-// unmatched lines.
+// unmatched lines. Suggestion is the closest known provider name when the
+// heading is within two edits of one; the UI offers it as a one-click accept
+// and never corrects the heading silently.
 type NewProvider struct {
-	Name    string   `json:"name"`
-	Records []Record `json:"records,omitempty"`
+	Name       string   `json:"name"`
+	Suggestion string   `json:"suggestion,omitempty"`
+	Records    []Record `json:"records,omitempty"`
 }
 
 // Result is the output of parsing a document.
@@ -239,9 +242,14 @@ func ParseTXT(input string, customProviders ...string) *Result {
 		}
 
 		// Unknown candidate heading: group records under it as a new
-		// provider candidate.
+		// provider candidate. If it is within two edits of a known
+		// provider, offer that name as a one-click suggestion; never
+		// correct the heading silently.
 		name := candidate
 		np := &NewProvider{Name: name}
+		if s := suggestProvider(name, known, 2); s != "" {
+			np.Suggestion = s
+		}
 		res.NewProviders = append(res.NewProviders, np)
 		newProviders[name] = np
 		current = name
@@ -259,4 +267,55 @@ func matchKnownCaseInsensitive(norm string, known []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// levenshtein returns the edit distance between a and b, comparing
+// case-insensitively. It is the classic dynamic-programming distance with
+// unit costs for insert, delete and substitute.
+func levenshtein(a, b string) int {
+	ar := []rune(strings.ToLower(a))
+	br := []rune(strings.ToLower(b))
+	prev := make([]int, len(br)+1)
+	cur := make([]int, len(br)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ar); i++ {
+		cur[0] = i
+		for j := 1; j <= len(br); j++ {
+			cost := 1
+			if ar[i-1] == br[j-1] {
+				cost = 0
+			}
+			m := prev[j] + 1
+			if cur[j-1]+1 < m {
+				m = cur[j-1] + 1
+			}
+			if prev[j-1]+cost < m {
+				m = prev[j-1] + cost
+			}
+			cur[j] = m
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(br)]
+}
+
+// suggestProvider returns the closest known provider name to name within
+// maxEdits edits, or "" when no known name is close enough. It never
+// returns the name itself; callers only invoke it for unknown headings.
+func suggestProvider(name string, known []string, maxEdits int) string {
+	best := ""
+	bestDist := maxEdits + 1
+	for _, k := range known {
+		d := levenshtein(name, k)
+		if d < bestDist {
+			bestDist = d
+			best = k
+		}
+	}
+	if bestDist <= maxEdits {
+		return best
+	}
+	return ""
 }

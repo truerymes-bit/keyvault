@@ -408,3 +408,59 @@ func TestRealWorldHeadings(t *testing.T) {
 		}
 	}
 }
+
+// TestSuggestionWithinTwoEdits covers item 11: a heading that is not a known
+// provider but is within two edits of one is offered as a suggestion, and a
+// heading far from every known provider is not. The suggestion is never
+// applied silently; the record keeps the parsed provider until the user
+// accepts it in the review step.
+func TestSuggestionWithinTwoEdits(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "Gemmini API Keys:"       -> trailing words stripped -> "Gemmini"
+	//   2 "a@b.com AIzaSyD-1234..." -> record under Gemmini
+	//   3 "Zephyr"                  -> unknown heading, far from every known name
+	//   4 "b@c.com sk-1234567890"   -> record under Zephyr
+	// Arithmetic: 2 records, 2 new providers, 0 unmatched. "Gemmini" is 1
+	// edit from "Gemini", so it suggests "Gemini"; "Zephyr" is 5+ edits from
+	// every known name, so it has no suggestion.
+	input := "Gemmini API Keys:\na@b.com AIzaSyD-1234567890abcdefghij\nZephyr\nb@c.com sk-1234567890abcdef\n"
+	res := ParseTXT(input)
+	if len(res.Records) != 2 {
+		t.Fatalf("records = %d, want 2: %+v", len(res.Records), res.Records)
+	}
+	if len(res.NewProviders) != 2 {
+		t.Fatalf("new providers = %d, want 2: %+v", len(res.NewProviders), res.NewProviders)
+	}
+	if len(res.Unmatched) != 0 {
+		t.Fatalf("unmatched = %d, want 0: %+v", len(res.Unmatched), res.Unmatched)
+	}
+	if res.NewProviders[0].Name != "Gemmini" || res.NewProviders[0].Suggestion != "Gemini" {
+		t.Fatalf("Gemmini candidate = %+v, want name Gemmini suggestion Gemini", res.NewProviders[0])
+	}
+	if res.NewProviders[1].Name != "Zephyr" || res.NewProviders[1].Suggestion != "" {
+		t.Fatalf("Zephyr candidate = %+v, want name Zephyr and no suggestion", res.NewProviders[1])
+	}
+	// The suggestion must not be applied silently.
+	if res.Records[0].Provider != "Gemmini" {
+		t.Fatalf("record provider = %q, want Gemmini (uncorrected)", res.Records[0].Provider)
+	}
+}
+
+// TestLevenshtein pins the edit-distance arithmetic by hand.
+func TestLevenshtein(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"Gemini", "Gemini", 0},  // identical
+		{"Gemmini", "Gemini", 1}, // one extra m
+		{"gemmini", "Gemini", 1}, // case-insensitive
+		{"OpenRouter", "OpenAI", 6},
+		{"", "abc", 3}, // three insertions
+	}
+	for _, c := range cases {
+		if got := levenshtein(c.a, c.b); got != c.want {
+			t.Errorf("levenshtein(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}
