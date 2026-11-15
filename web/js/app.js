@@ -826,6 +826,7 @@ function openImportModal() {
       <div class="wizard-panel hidden" data-step="2">
         <div class="wizard-scroll">
           <div id="import-attention" class="attention-banner hidden"></div>
+          <div id="import-new-providers" class="hidden"></div>
           <div class="table-wrap">
             <table id="import-table">
               <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
@@ -837,16 +838,6 @@ function openImportModal() {
             <span>Hide keys</span>
           </div>
           <div id="import-unmatched" class="hidden"></div>
-          <div id="import-new-providers" class="hidden">
-            <div class="field">
-              <span class="small">New provider detected — confirm with one click to group its records:</span>
-              <ul class="new-providers"></ul>
-            </div>
-            <div class="btn_row">
-              <button class="btn" id="import-new-providers-cancel">Skip</button>
-              <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
-            </div>
-          </div>
           <div id="import-dup-summary" class="hidden"></div>
         </div>
         <div class="btn-row">
@@ -1089,6 +1080,7 @@ function openImportModal() {
         cellInputs.clear();
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
+        renderNewProviders(data.new_providers);
       })
       .catch((err) => toast(err.message, 'error'));
   };
@@ -1156,14 +1148,14 @@ function openImportModal() {
         session = data.session_id;
         edits.forEach((e) => cellInputs.set(e.index + '_provider', e.provider));
         renderRows(data.rows);
-        const box = newProvEl.querySelector(`[data-suggest="${np.name}"]`);
-        if (box) box.innerHTML = `<span class="small">Using <strong>${escapeHtml(np.suggestion)}</strong>.</span>`;
+        renderNewProviders(data.new_providers);
         toast(`Renamed ${edits.length} record${edits.length !== 1 ? 's' : ''} to ${np.suggestion}.`, 'success');
       })
       .catch((err) => toast(err.message, 'error'));
   };
 
   const renderNewProviders = (nps) => {
+    // The box is hidden only here, when validate returns no new providers.
     if (!nps || !nps.length) {
       newProvEl.classList.add('hidden');
       return;
@@ -1175,30 +1167,19 @@ function openImportModal() {
       if (np.suggestion) {
         // escapeHtml covers every interpolated value, including the
         // data-* attribute values, so the heading text cannot break out.
-        suggest = `<div class="suggest" data-suggest="${escapeHtml(np.name)}"><span class="small">Did you mean <strong>${escapeHtml(np.suggestion)}</strong>?</span> <button class="btn tiny" data-accept="${escapeHtml(np.name)}">Use ${escapeHtml(np.suggestion)}</button></div>`;
+        suggest = `<div class="suggest" data-suggest="${escapeHtml(np.name)}"><button class="btn tiny" data-accept="${escapeHtml(np.name)}">Did you mean ${escapeHtml(np.suggestion)}?</button></div>`;
       }
       return `<li><strong>${escapeHtml(np.name)}</strong>${recs}${suggest}</li>`;
     }).join('');
     newProvEl.innerHTML = `
       <div class="field">
-        <span class="small">New provider detected — confirm with one click to group its records:</span>
+        <span class="small">New provider detected — its records will be imported under this name:</span>
         <ul class="new-providers">${items}</ul>
-      </div>
-      <div class="btn_row">
-        <button class="btn" id="import-new-providers-cancel">Skip</button>
-        <button class="btn primary" id="import-new-providers-confirm">Confirm &amp; add all records</button>
       </div>
     `;
     newProvEl.querySelectorAll('[data-accept]').forEach((btn) => {
       const np = nps.find((n) => n.name === btn.dataset.accept);
       if (np) btn.addEventListener('click', () => acceptSuggestion(np));
-    });
-    newProvEl.querySelector('#import-new-providers-cancel').addEventListener('click', () => {
-      newProvEl.classList.add('hidden');
-    });
-    newProvEl.querySelector('#import-new-providers-confirm').addEventListener('click', () => {
-      toast(`Confirmed ${nps.length} new provider${nps.length > 1 ? 's' : ''}.`, 'success');
-      newProvEl.classList.add('hidden');
     });
   };
 
