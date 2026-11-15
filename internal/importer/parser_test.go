@@ -162,9 +162,9 @@ func TestCustomProvidersRecognized(t *testing.T) {
 }
 
 func TestUnrecognizedHeadingIsCandidateProvider(t *testing.T) {
-	input := "Gemini\na@b.com k1\nUnknownThing\nb@c.com k2\n"
+	input := "Gemini\na@b.com k1\nTotallyUnknownThing\nb@c.com k2\n"
 	res := ParseTXT(input)
-	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "UnknownThing" {
+	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "TotallyUnknownThing" {
 		t.Fatalf("new providers = %+v", res.NewProviders)
 	}
 	if len(res.Unmatched) != 0 {
@@ -174,7 +174,7 @@ func TestUnrecognizedHeadingIsCandidateProvider(t *testing.T) {
 		email, provider string
 	}{
 		{"a@b.com", "Gemini"},
-		{"b@c.com", "UnknownThing"},
+		{"b@c.com", "TotallyUnknownThing"},
 	}
 	if len(res.Records) != len(want) {
 		t.Fatalf("records = %d, want %d: %+v", len(res.Records), len(want), res.Records)
@@ -529,7 +529,7 @@ func TestHeadingNeedsFollowingRecord(t *testing.T) {
 
 // TestKeyOnlyTokenRule pins the key-only definition: a single token of at
 // least 16 characters from letters, digits, dots, underscores and hyphens,
-// with no slash.
+// with no slash, and at least one digit.
 func TestKeyOnlyTokenRule(t *testing.T) {
 	cases := []struct {
 		line string
@@ -538,7 +538,8 @@ func TestKeyOnlyTokenRule(t *testing.T) {
 		{"jina_1bf4x9k2m7q1Fdj2", true}, // 21 chars, underscore + digits
 		{"hf_gcXz8q2m7p1zFG", true},     // 17 chars
 		{"1234567890123456", true},      // exactly 16 digits
-		{"abcdefghijklmnop", true},      // exactly 16 letters
+		{"AIzaFAKE0001abcdefg", true},   // 19 chars, digits required
+		{"abcdefghijklmnop", false},     // exactly 16 letters, no digit
 		{"shortkey1234567", false},      // 15 chars
 		{"has/slash123456789", false},   // slash
 		{"two words 123456789", false},  // spaces
@@ -547,6 +548,35 @@ func TestKeyOnlyTokenRule(t *testing.T) {
 		if got := isKeyOnly(c.line); got != c.want {
 			t.Errorf("isKeyOnly(%q) = %v, want %v", c.line, got, c.want)
 		}
+	}
+}
+
+// TestKeyOnlyTokenNeedsDigit pins the digit requirement: a key-only token
+// must contain at least one digit, so an all-letter token of 16+ characters
+// is a heading candidate rather than a key.
+func TestKeyOnlyTokenNeedsDigit(t *testing.T) {
+	if !isKeyOnly("AIzaFAKE0001abcdefg") {
+		t.Errorf("isKeyOnly(%q) = false, want true", "AIzaFAKE0001abcdefg")
+	}
+	if isKeyOnly("TotallyUnknownThing") {
+		t.Errorf("isKeyOnly(%q) = true, want false (no digit)", "TotallyUnknownThing")
+	}
+
+	// TotallyUnknownThing is a heading candidate: a record after it makes it
+	// a new provider heading, not a key-only record.
+	res := ParseTXT("TotallyUnknownThing\na@b.com k1\n")
+	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "TotallyUnknownThing" {
+		t.Fatalf("new providers = %+v, want TotallyUnknownThing as a heading candidate", res.NewProviders)
+	}
+	if len(res.Records) != 1 || res.Records[0].Provider != "TotallyUnknownThing" {
+		t.Fatalf("records = %+v, want one under TotallyUnknownThing", res.Records)
+	}
+
+	// AIzaFAKE0001abcdefg is a key-only token: under a heading it becomes a
+	// needs-attention record with an empty email.
+	res = ParseTXT("Gemini\nAIzaFAKE0001abcdefg\n")
+	if len(res.Records) != 1 || res.Records[0].Key != "AIzaFAKE0001abcdefg" || res.Records[0].Email != "" || res.Records[0].Status != StatusNeedsAttention {
+		t.Fatalf("records = %+v, want one key-only needs_attention record under Gemini", res.Records)
 	}
 }
 

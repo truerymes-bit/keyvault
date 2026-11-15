@@ -111,16 +111,21 @@ func isUnrecognizedLine(line string) bool {
 	return false
 }
 
-// keyOnlyRe matches a key-only line: a single token of at least 16
-// characters drawn from letters, digits, dots, underscores and hyphens,
-// with no slash.
+// keyOnlyRe matches the shape of a key-only line: a single token of at least
+// 16 characters drawn from letters, digits, dots, underscores and hyphens,
+// with no slash. It does not require a digit; isKeyOnly does.
 var keyOnlyRe = regexp.MustCompile(`^[A-Za-z0-9._-]{16,}$`)
 
 // isKeyOnly reports whether a no-email, single-token line is key-looking and
 // should be returned as a record with an empty email (provider still set)
-// rather than classified as a provider heading.
+// rather than classified as a provider heading. The token must contain at
+// least one digit; an all-letter token of 16+ characters is a heading
+// candidate instead.
 func isKeyOnly(line string) bool {
 	if strings.ContainsAny(line, " 	@/") {
+		return false
+	}
+	if !strings.ContainsAny(line, "0123456789") {
 		return false
 	}
 	return keyOnlyRe.MatchString(line)
