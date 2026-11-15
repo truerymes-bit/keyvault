@@ -162,9 +162,9 @@ func TestCustomProvidersRecognized(t *testing.T) {
 }
 
 func TestUnrecognizedHeadingIsCandidateProvider(t *testing.T) {
-	input := "Gemini\na@b.com k1\nTotallyUnknownThing\nb@c.com k2\n"
+	input := "Gemini\na@b.com k1\nUnknownThing\nb@c.com k2\n"
 	res := ParseTXT(input)
-	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "TotallyUnknownThing" {
+	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "UnknownThing" {
 		t.Fatalf("new providers = %+v", res.NewProviders)
 	}
 	if len(res.Unmatched) != 0 {
@@ -174,7 +174,7 @@ func TestUnrecognizedHeadingIsCandidateProvider(t *testing.T) {
 		email, provider string
 	}{
 		{"a@b.com", "Gemini"},
-		{"b@c.com", "TotallyUnknownThing"},
+		{"b@c.com", "UnknownThing"},
 	}
 	if len(res.Records) != len(want) {
 		t.Fatalf("records = %d, want %d: %+v", len(res.Records), len(want), res.Records)
@@ -443,6 +443,110 @@ func TestSuggestionWithinTwoEdits(t *testing.T) {
 	// The suggestion must not be applied silently.
 	if res.Records[0].Provider != "Gemmini" {
 		t.Fatalf("record provider = %q, want Gemmini (uncorrected)", res.Records[0].Provider)
+	}
+}
+
+// TestRealFileHeadingLines covers R5 item 6 with the exact lines from the
+// user's real file: request/header lines create no providers, while a heading
+// followed by a key-only line does.
+func TestRealFileHeadingLines(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "Content-Type"               -> heading candidate
+	//   2 "application/json"           -> unrecognized (slash): 1 not confirmed
+	//   3 "Authorization"              -> heading candidate
+	//   4 "Bearer $OPENROUTER_API_KEY" -> unrecognized ($): 3 not confirmed
+	//   5 "Model"                      -> heading candidate
+	//   6 "openrouter/free"           -> unrecognized (slash): 5 not confirmed
+	//   7 "ENDPOINT:"                  -> heading candidate
+	//   8 "https://api.example.com/v1" -> unrecognized (http): 7 not confirmed
+	//   9 "Jina.ai"                    -> heading candidate
+	//  10 "jina_1bf4x9k2m7q1Fdj2"      -> key-only record: 9 confirmed
+	//  11 "HuggingFace"                -> heading candidate
+	//  12 "hf_gcXz8q2m7p1zFG"          -> key-only record: 11 confirmed
+	// Arithmetic: 2 records (empty email, needs_attention), 2 new providers
+	// (Jina.ai, HuggingFace), 8 unmatched lines (1-8), 0 other providers.
+	input := "Content-Type\napplication/json\nAuthorization\nBearer $OPENROUTER_API_KEY\nModel\nopenrouter/free\nENDPOINT:\nhttps://api.example.com/v1\nJina.ai\njina_1bf4x9k2m7q1Fdj2\nHuggingFace\nhf_gcXz8q2m7p1zFG\n"
+	res := ParseTXT(input)
+	if len(res.Records) != 2 {
+		t.Fatalf("records = %d, want 2: %+v", len(res.Records), res.Records)
+	}
+	if len(res.NewProviders) != 2 {
+		t.Fatalf("new providers = %d, want 2: %+v", len(res.NewProviders), res.NewProviders)
+	}
+	if len(res.Unmatched) != 8 {
+		t.Fatalf("unmatched = %d, want 8: %+v", len(res.Unmatched), res.Unmatched)
+	}
+	wantProvider := []string{"Jina.ai", "HuggingFace"}
+	for i, want := range wantProvider {
+		if res.NewProviders[i].Name != want {
+			t.Errorf("new provider %d = %q, want %q", i, res.NewProviders[i].Name, want)
+		}
+		if res.Records[i].Provider != want || res.Records[i].Email != "" || res.Records[i].Status != StatusNeedsAttention {
+			t.Errorf("record %d = %+v, want provider %q, empty email, needs_attention", i, res.Records[i], want)
+		}
+	}
+	for _, u := range res.Unmatched {
+		if u.Reason != "unrecognized line" {
+			t.Errorf("unmatched line %d reason = %q, want unrecognized line", u.Line, u.Reason)
+		}
+	}
+}
+
+// TestHeadingNeedsFollowingRecord pins the heading rule: a no-email line is a
+// provider heading only if at least one record follows it before the next
+// heading or unrecognized line.
+func TestHeadingNeedsFollowingRecord(t *testing.T) {
+	// Fixture, line by line:
+	//   1 "Orphan"           -> heading candidate, next line unrecognized -> not a heading
+	//   2 "application/json" -> unrecognized
+	//   3 "Parent"           -> heading candidate, next line a record -> heading
+	//   4 "a@b.com sk-1"     -> record under Parent
+	// Arithmetic: 1 record under Parent, 1 new provider, 2 unmatched.
+	res := ParseTXT("Orphan\napplication/json\nParent\na@b.com sk-1\n")
+	if len(res.NewProviders) != 1 || res.NewProviders[0].Name != "Parent" {
+		t.Fatalf("new providers = %+v, want only Parent", res.NewProviders)
+	}
+	if len(res.Unmatched) != 2 {
+		t.Fatalf("unmatched = %d, want 2: %+v", len(res.Unmatched), res.Unmatched)
+	}
+	if len(res.Records) != 1 || res.Records[0].Provider != "Parent" {
+		t.Fatalf("records = %+v, want one under Parent", res.Records)
+	}
+
+	// A heading candidate at end of file with no following record is not a
+	// provider: 1 record (before any heading), 0 new providers, 1 unmatched.
+	res = ParseTXT("a@b.com sk-0\nLonely\n")
+	if len(res.NewProviders) != 0 {
+		t.Fatalf("new providers = %+v, want 0", res.NewProviders)
+	}
+	if len(res.Unmatched) != 1 || res.Unmatched[0].Text != "Lonely" {
+		t.Fatalf("unmatched = %+v, want only Lonely", res.Unmatched)
+	}
+	if len(res.Records) != 1 || res.Records[0].Status != StatusNoProvider {
+		t.Fatalf("records = %+v, want one no_provider record", res.Records)
+	}
+}
+
+// TestKeyOnlyTokenRule pins the key-only definition: a single token of at
+// least 16 characters from letters, digits, dots, underscores and hyphens,
+// with no slash.
+func TestKeyOnlyTokenRule(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"jina_1bf4x9k2m7q1Fdj2", true}, // 21 chars, underscore + digits
+		{"hf_gcXz8q2m7p1zFG", true},     // 17 chars
+		{"1234567890123456", true},      // exactly 16 digits
+		{"abcdefghijklmnop", true},      // exactly 16 letters
+		{"shortkey1234567", false},      // 15 chars
+		{"has/slash123456789", false},   // slash
+		{"two words 123456789", false},  // spaces
+	}
+	for _, c := range cases {
+		if got := isKeyOnly(c.line); got != c.want {
+			t.Errorf("isKeyOnly(%q) = %v, want %v", c.line, got, c.want)
+		}
 	}
 }
 

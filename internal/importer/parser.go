@@ -111,46 +111,73 @@ func isUnrecognizedLine(line string) bool {
 	return false
 }
 
-// keyOnlyRe matches a single-token key-like line: whitespace-free, no "@",
-// long enough, and carrying characters a provider name would not use.
-var keyOnlyRe = regexp.MustCompile(`^[A-Za-z0-9_\-.]{12,}$`)
+// keyOnlyRe matches a key-only line: a single token of at least 16
+// characters drawn from letters, digits, dots, underscores and hyphens,
+// with no slash.
+var keyOnlyRe = regexp.MustCompile(`^[A-Za-z0-9._-]{16,}$`)
 
 // isKeyOnly reports whether a no-email, single-token line is key-looking and
 // should be returned as a record with an empty email (provider still set)
 // rather than classified as a provider heading.
 func isKeyOnly(line string) bool {
-	if strings.ContainsAny(line, " \t@") || !keyOnlyRe.MatchString(line) {
+	if strings.ContainsAny(line, " 	@/") {
 		return false
 	}
-	// A plain alphabetic word (possibly hyphenated) is treated as a heading
-	// name below, not a key.
-	if containsOnlyLetters(line) {
-		return false
-	}
-	if strings.ContainsAny(line, "0123456789") {
-		return true
-	}
-	if strings.Contains(line, "_") || strings.Contains(line, "..") {
-		return true
-	}
-	lower := strings.ToLower(line)
-	if strings.HasPrefix(lower, "sk-") || strings.HasPrefix(lower, "sk_") ||
-		strings.HasPrefix(lower, "aiza") || strings.HasPrefix(lower, "opn-") ||
-		strings.HasPrefix(lower, "ghp_") || strings.HasPrefix(lower, "gho_") ||
-		strings.HasPrefix(lower, "xoxb_") || strings.HasPrefix(lower, "pk_") ||
-		strings.HasPrefix(lower, "rk_") {
-		return true
-	}
-	return false
+	return keyOnlyRe.MatchString(line)
 }
 
-func containsOnlyLetters(s string) bool {
-	for _, r := range s {
-		if !unicode.IsLetter(r) {
+// lineKind is the classification of one non-blank input line. A heading
+// candidate is only promoted to a real heading when a record follows it
+// before the next heading or unrecognized line.
+type lineKind int
+
+const (
+	kindBlank lineKind = iota
+	kindRecord
+	kindKeyOnly
+	kindMalformed
+	kindUnrecognized
+	kindHeading
+)
+
+func classifyLine(line string) lineKind {
+	if line == "" {
+		return kindBlank
+	}
+	if emailStartRe.MatchString(line) {
+		return kindRecord
+	}
+	if strings.Contains(line, "@") {
+		return kindMalformed
+	}
+	if isUnrecognizedLine(line) {
+		return kindUnrecognized
+	}
+	if isKeyOnly(line) {
+		return kindKeyOnly
+	}
+	if headingWordRe.MatchString(stripTrailingPhrase(trimTrailingPunct(line))) {
+		return kindHeading
+	}
+	return kindUnrecognized
+}
+
+// headingConfirmed reports whether a record follows the heading candidate at
+// index i before the next heading or unrecognized line. Blank lines and
+// malformed record lines are skipped; a malformed line is a broken record,
+// not a heading or an unrecognized line.
+func headingConfirmed(kinds []lineKind, i int) bool {
+	for j := i + 1; j < len(kinds); j++ {
+		switch kinds[j] {
+		case kindBlank, kindMalformed:
+			continue
+		case kindRecord, kindKeyOnly:
+			return true
+		default:
 			return false
 		}
 	}
-	return true
+	return false
 }
 
 // ParseTXT parses a plain-text import document. customProviders are extra
@@ -163,6 +190,11 @@ func ParseTXT(input string, customProviders ...string) *Result {
 	newProviders := make(map[string]*NewProvider)
 
 	lines := strings.Split(input, "\n")
+	kinds := make([]lineKind, len(lines))
+	for i, raw := range lines {
+		kinds[i] = classifyLine(strings.TrimSpace(raw))
+	}
+
 	for i, raw := range lines {
 		lineNo := i + 1
 		line := strings.TrimSpace(raw)
@@ -170,8 +202,9 @@ func ParseTXT(input string, customProviders ...string) *Result {
 			continue
 		}
 
-		// Email/key record?
-		if m := emailStartRe.FindStringSubmatch(line); m != nil {
+		switch kinds[i] {
+		case kindRecord:
+			m := emailStartRe.FindStringSubmatch(line)
 			rec := Record{
 				Line:     lineNo,
 				Email:    m[1],
@@ -186,34 +219,10 @@ func ParseTXT(input string, customProviders ...string) *Result {
 			if np, ok := newProviders[current]; ok {
 				np.Records = append(np.Records, rec)
 			}
-			continue
-		}
 
-		// A line containing "@" that is not an email record is malformed.
-		if strings.Contains(line, "@") {
-			res.Unmatched = append(res.Unmatched, UnmatchedLine{
-				Line:     lineNo,
-				Text:     line,
-				Reason:   "malformed record",
-				Provider: current,
-			})
-			continue
-		}
-
-		// Sentences, "Name: value" pairs, slashes, http, "$", parentheses.
-		if isUnrecognizedLine(line) {
-			res.Unmatched = append(res.Unmatched, UnmatchedLine{
-				Line:     lineNo,
-				Text:     line,
-				Reason:   "unrecognized line",
-				Provider: current,
-			})
-			continue
-		}
-
-		// Key-only line under a heading: record with an empty email that the
-		// user must fill in before the key is useful.
-		if isKeyOnly(line) {
+		case kindKeyOnly:
+			// Key-only line under a heading: record with an empty email that
+			// the user must fill in before the key is useful.
 			res.Records = append(res.Records, Record{
 				Line:     lineNo,
 				Email:    "",
@@ -224,40 +233,55 @@ func ParseTXT(input string, customProviders ...string) *Result {
 			if np, ok := newProviders[current]; ok {
 				np.Records = append(np.Records, res.Records[len(res.Records)-1])
 			}
-			continue
-		}
 
-		// Provider heading: strip trailing punctuation and trailing key
-		// phrases, then require 1 to 3 words of letters, digits, dots, and
-		// hyphens. Known names match case-insensitively.
-		candidate := trimTrailingPunct(line)
-		candidate = stripTrailingPhrase(candidate)
-		if !headingWordRe.MatchString(candidate) {
+		case kindMalformed:
+			res.Unmatched = append(res.Unmatched, UnmatchedLine{
+				Line:     lineNo,
+				Text:     line,
+				Reason:   "malformed record",
+				Provider: current,
+			})
+
+		case kindUnrecognized:
 			res.Unmatched = append(res.Unmatched, UnmatchedLine{
 				Line:     lineNo,
 				Text:     line,
 				Reason:   "unrecognized line",
 				Provider: current,
 			})
-			continue
-		}
-		if name, ok := matchKnownCaseInsensitive(candidate, known); ok {
-			current = name
-			continue
-		}
 
-		// Unknown candidate heading: group records under it as a new
-		// provider candidate. If it is within two edits of a known
-		// provider, offer that name as a one-click suggestion; never
-		// correct the heading silently.
-		name := candidate
-		np := &NewProvider{Name: name}
-		if s := suggestProvider(name, known, 2); s != "" {
-			np.Suggestion = s
+		case kindHeading:
+			// A no-email line is a provider heading only if at least one
+			// record follows it before the next heading or unrecognized
+			// line. Otherwise it is an unrecognized line, never a provider.
+			if !headingConfirmed(kinds, i) {
+				res.Unmatched = append(res.Unmatched, UnmatchedLine{
+					Line:     lineNo,
+					Text:     line,
+					Reason:   "unrecognized line",
+					Provider: current,
+				})
+				continue
+			}
+			candidate := stripTrailingPhrase(trimTrailingPunct(line))
+			if name, ok := matchKnownCaseInsensitive(candidate, known); ok {
+				current = name
+				continue
+			}
+
+			// Unknown candidate heading: group records under it as a new
+			// provider candidate. If it is within two edits of a known
+			// provider, offer that name as a one-click suggestion; never
+			// correct the heading silently.
+			name := candidate
+			np := &NewProvider{Name: name}
+			if s := suggestProvider(name, known, 2); s != "" {
+				np.Suggestion = s
+			}
+			res.NewProviders = append(res.NewProviders, np)
+			newProviders[name] = np
+			current = name
 		}
-		res.NewProviders = append(res.NewProviders, np)
-		newProviders[name] = np
-		current = name
 	}
 	return res
 }
