@@ -15,11 +15,10 @@ const state = {
 };
 
 const VIEWS = {
-  dashboard: { name: 'Dashboard', icon: '▣', label: 'Dashboard' },
   keys:      { name: 'API Keys', icon: '🔑', label: 'API Keys' },
-  addKey:    { name: 'Add Key', icon: '+', label: 'Add Key' },
   providers: { name: 'Providers', icon: '📦', label: 'Providers' },
   settings:  { name: 'Settings', icon: '⚙', label: 'Settings' },
+  about:     { name: 'About', icon: 'ℹ', label: 'About' },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -76,8 +75,45 @@ async function api(path, options = {}) {
 function lockVault() {
   state.unlocked = false;
   state.csrf = '';
-  $('#status-label').textContent = 'Locked';
+  setStatusLocked();
   showAuthModal();
+}
+
+/* ---------- status card / top bar ---------- */
+// The sidebar status card and the top bar dot reflect the vault state.
+// Called on init, unlock, and lock.
+function setStatusLocked() {
+  const dot = $('#status-dot');
+  if (dot) dot.style.background = '#6b7280';
+  const icon = $('#sidebar-status-icon');
+  if (icon) icon.textContent = '🔒';
+  const label = $('#sidebar-status-label');
+  if (label) label.textContent = 'Locked';
+  const detail = $('#sidebar-status-detail');
+  if (detail) detail.textContent = 'Unlock to continue';
+}
+
+function setStatusReady() {
+  const dot = $('#status-dot');
+  if (dot) dot.style.background = '';
+  const icon = $('#sidebar-status-icon');
+  if (icon) icon.textContent = '✓';
+  const label = $('#sidebar-status-label');
+  if (label) label.textContent = 'Database Ready';
+  const detail = $('#sidebar-status-detail');
+  if (detail) detail.textContent = 'SQLite • Encrypted';
+}
+
+// GET /api/info fills the version and the local-database status in the top
+// bar. A failure leaves the defaults in place; the app still works.
+async function loadInfo() {
+  try {
+    const info = await api('/api/info');
+    if (info && info.version) {
+      const el = $('#status-version');
+      if (el) el.textContent = 'v' + info.version;
+    }
+  } catch (_) { /* keep the static defaults */ }
 }
 
 /* ---------- overlay scaffolding ---------- */
@@ -104,7 +140,7 @@ function showOverlay(title, sub, footer) {
 
 /* ---------- view router ---------- */
 function currentView() {
-  return (location.hash || '#/unlock').replace('#', '');
+  return (location.hash || '#/keys').replace('#', '');
 }
 
 function isActive(view) {
@@ -122,57 +158,6 @@ function placeholderView(view) {
         <a class="btn" href="#/keys">Back to API Keys</a>
       </div>
     </div>`;
-}
-
-async function renderDashboard() {
-  const resp = await api('/api/dashboard');
-  if (resp.error) { $('#view-root').innerHTML = `<div class="empty">Could not load the dashboard: ${escapeHtml(resp.error)}</div>`; return; }
-  const maxDate = (d) => d || '—';
-  const statCard = (label, value, icon) => `
-    <div class="stat-card">
-      <div class="stat-icon">${icon}</div>
-      <div class="stat-value">${escapeHtml(String(value))}</div>
-      <div class="stat-label">${escapeHtml(label)}</div>
-    </div>`;
-  const table = (items, label, dateCol) => {
-    if (!items.length) {
-      return `<div class="panel"><h2>${escapeHtml(label)}</h2><div class="empty">Nothing yet.</div></div>`;
-    }
-    const rows = items.map((k) => `
-      <tr class="key-row" data-id="${k.id}" style="cursor:pointer;">
-        <td>${escapeHtml(k.email)}</td>
-        <td>${escapeHtml(k.provider_name)}</td>
-        <td><code>${escapeHtml(k.key)}</code></td>
-        <td>${escapeHtml(maxDate(dateCol === 'created' ? k.created_at : k.updated_at))}</td>
-      </tr>`).join('');
-    return `
-      <div class="panel">
-        <h2>${escapeHtml(label)}</h2>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Email</th><th>Provider</th><th>Key</th><th>${dateCol === 'created' ? 'Added' : 'Updated'}</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div>
-      </div>`;
-  };
-
-  $('#view-root').innerHTML = `
-    <div class="view">
-      <h1>Dashboard</h1>
-      <div class="stat-row">
-        ${statCard('API keys', resp.total_keys, '🔑')}
-        ${statCard('Providers', resp.total_providers, '📦')}
-        ${statCard('Email accounts', resp.total_emails, '✉️')}
-      </div>
-      <div class="panel-grid">
-        ${table(resp.recent_keys, 'Recently added keys', 'created')}
-      </div>
-    </div>`;
-
-  // Allow clicking any recent key row to reveal the key.
-  $('#view-root').addEventListener('click', (e) => {
-    const row = e.target.closest('.key-row');
-    if (row) openRevealModal(Number(row.dataset.id));
-  });
 }
 
 const groupByEmail = (items) => {
@@ -465,98 +450,6 @@ function formatDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-async function renderAddKey() {
-  const root = $('#view-root');
-  const providers = await api('/api/providers');
-  const opts = providers.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-
-  const msgBox = document.createElement('div');
-  msgBox.id = 'add-key-msg';
-  msgBox.className = 'empty';
-  msgBox.style.color = 'var(--danger)';
-
-  root.innerHTML = `
-    <div class="view">
-      <h1>Add Key</h1>
-      <p class="lede">Add an API key for an email address and provider.</p>
-      <form id="add-key-form" autocomplete="off">
-        <div class="field">
-          <label for="ak-email">Email address</label>
-          <input id="ak-email" type="email" spellcheck="false" placeholder="you@example.com">
-        </div>
-        <div class="field">
-          <label for="ak-provider">Provider</label>
-          <select id="ak-provider">
-            <option value="">Choose a provider…</option>
-            ${opts}
-          </select>
-        </div>
-        <div class="field">
-          <label class="checkbox">
-            <input id="ak-new-provider" type="checkbox">
-            Create a new provider
-          </label>
-          <input id="ak-new-provider-name" type="text" placeholder="New provider name" style="margin-top:6px;" disabled>
-        </div>
-        <div class="field">
-          <label for="ak-key">API key</label>
-          <input id="ak-key" type="password" autocomplete="off" placeholder="••••••••">
-        </div>
-        <div class="field">
-          <label for="ak-label">Description (optional)</label>
-          <input id="ak-label" type="text" placeholder="e.g. production, sandbox">
-        </div>
-        ${msgBox.outerHTML}
-        <div class="footer" style="justify-content:flex-end;">
-          <button type="button" class="btn" id="ak-cancel">Cancel</button>
-          <button type="submit" class="btn primary">Save Key</button>
-        </div>
-      </form>
-    </div>`;
-
-  const form = $('#add-key-form');
-  const cancel = $('#ak-cancel');
-  cancel.addEventListener('click', () => { location.hash = '#/keys'; });
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = $('#ak-email').value.trim();
-    const providerID = $('#ak-provider').value;
-    const newProvider = $('#ak-new-provider').checked;
-    const newProviderName = $('#ak-new-provider-name').value.trim();
-    const key = $('#ak-key').value;
-    const label = $('#ak-label').value.trim();
-    const errors = [];
-    if (!emailRE.test(email)) errors.push('invalid email address');
-    if (!key) errors.push('key must not be empty');
-    if (!providerID && !newProvider) errors.push('select an existing provider or create a new one');
-    if (newProvider && !newProviderName) errors.push('enter a name for the new provider');
-    const msgBox = $('#add-key-msg');
-    if (errors.length) {
-      msgBox.textContent = errors.join(' · ');
-      msgBox.style.color = 'var(--danger)';
-      return;
-    }
-    msgBox.textContent = '';
-    msgBox.style.color = 'var(--text)';
-    try {
-      let providerIDNumber = Number(providerID);
-      if (newProvider) {
-        const created = await api('/api/providers', { method: 'POST', json: { name: newProviderName } }, { 'X-CSRF-Token': state.csrf });
-        providerIDNumber = created.id;
-      }
-      await api('/api/keys', { method: 'POST', json: { email, provider_id: providerIDNumber, key, label } }, { 'X-CSRF-Token': state.csrf });
-      toast('Saved');
-      location.hash = '#/keys';
-    } catch (err) {
-      msgBox.textContent = err.message;
-      msgBox.style.color = 'var(--danger)';
-    }
-  });
-  $('#ak-new-provider').addEventListener('change', () => {
-    $('#ak-new-provider-name').disabled = !$('#ak-new-provider').checked;
-  });
 }
 
 async function renderProviders() {
@@ -1367,6 +1260,31 @@ function openImportModal() {
     renderKeys();
   });
 }
+/* ---------- About ---------- */
+// Content comes from GET /api/info: name, version, encryption, db file path.
+async function renderAbout() {
+  const root = $('#view-root');
+  root.innerHTML = `
+    <div class="view">
+      <h1>About</h1>
+      <div class="panel about-panel">
+        <div class="about-row"><span class="about-label">Name</span><span id="about-name">KeyVault</span></div>
+        <div class="about-row"><span class="about-label">Version</span><span id="about-version">—</span></div>
+        <div class="about-row"><span class="about-label">Encryption</span><span id="about-encryption">—</span></div>
+        <div class="about-row"><span class="about-label">Data stored at</span><span id="about-db" class="about-db">—</span></div>
+      </div>
+      <p class="small">Your master password encrypts the database. It is never stored on disk or sent over the network.</p>
+    </div>`;
+  try {
+    const info = await api('/api/info');
+    if (info && !info.error) {
+      $('#about-version').textContent = info.version || '—';
+      $('#about-encryption').textContent = 'AES-256-GCM with Argon2id key derivation';
+      $('#about-db').textContent = info.db_file || '—';
+    }
+  } catch (_) { /* leave the placeholders */ }
+}
+
 async function renderSettings() {
   const root = $('#view-root');
   root.innerHTML = `
@@ -1548,30 +1466,25 @@ async function showView(view) {
     return;
   }
   isActive(view);
-  if (view === 'dashboard') {
-    await renderDashboard();
-  } else if (view === 'keys') {
+  if (view === 'keys') {
     await renderKeys();
-  } else if (view === 'add-key') {
-    await renderAddKey();
   } else if (view === 'providers') {
     await renderProviders();
-  } else if (view === 'import') {
-    // R5: import is a modal opened from the API Keys page, not a hash view
-    openImportModal();
-    return;
   } else if (view === 'settings') {
     await renderSettings();
+  } else if (view === 'about') {
+    await renderAbout();
   } else {
-    content.innerHTML = `<div class="view">${placeholderView(view)}</div>`;
+    // Unknown or empty hash lands on the Keys page.
+    location.hash = '#/keys';
   }
 }
 
 function onHashChange() {
-  const raw = (location.hash || '#/unlock').replace('#', '').replace(/^\//, '');
-  const view = raw.replace('/setup', 'setup').replace('/unlock', 'unlock').replace('keys/new', 'add-key');
+  const raw = (location.hash || '#/keys').replace('#', '').replace(/^\//, '');
+  const view = raw.replace('/setup', 'setup').replace('/unlock', 'unlock');
   if (state.unlocked && (view === 'setup' || view === 'unlock')) {
-    location.hash = '#/dashboard';
+    location.hash = '#/keys';
     return;
   }
   showView(view);
@@ -1611,8 +1524,8 @@ async function doUnlock() {
   $('#overlay-password').value = '';
   if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
   $('#overlay-backdrop').hidden = true;
-  $('#status-label').textContent = 'Ready';
-  showView('dashboard');
+  setStatusReady();
+  showView('keys');
 }
 
 async function doSetup() {
@@ -1674,7 +1587,7 @@ const unlockFormHTML = `
  * no Cancel. The same modal shows the setup form until a master password
  * exists, then the unlock form. */
 function showAuthModal() {
-  $('#status-label').textContent = 'Locked';
+  setStatusLocked();
   if (state.setup) {
     showOverlay('Unlock KeyVault', 'Enter your master password to continue.', unlockFormHTML);
     const unlockBtn = $('#overlay-unlock');
@@ -1697,7 +1610,7 @@ function showAuthModal() {
 
 /* ---------- init ---------- */
 async function init() {
-  if (state.unlocked) { showView('dashboard'); return; }
+  if (state.unlocked) { showView('keys'); return; }
   try {
     const st = await api('/api/auth/status');
     state.setup = !!st.setup;
@@ -1708,11 +1621,13 @@ async function init() {
     state.unlocked = false;
   }
   if (state.unlocked) {
-    // Valid session survived the reload: stay on the dashboard, no modal.
-    $('#status-label').textContent = 'Ready';
-    showView('dashboard');
+    // Valid session survived the reload: stay on the Keys page, no modal.
+    setStatusReady();
+    await loadInfo();
+    showView('keys');
     return;
   }
+  setStatusLocked();
   showAuthModal();
 }
 
@@ -1720,7 +1635,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $$('nav a[data-view]').forEach((a) => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      if (state.unlocked || a.dataset.view !== 'dashboard' && a.dataset.view !== 'keys') {
+      if (state.unlocked) {
         location.hash = a.getAttribute('href');
       } else {
         location.hash = '#/unlock';

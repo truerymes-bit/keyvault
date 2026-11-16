@@ -55,6 +55,17 @@ html, body {
   font-weight: 800;
   font-size: 15px;
 }
+#topbar .lock-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
 #topbar .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
 #topbar .subtitle { font-size: 11px; color: var(--muted); }
 #topbar .spacer { flex: 1; }
@@ -69,6 +80,7 @@ html, body {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--success); animation: pulse 2s infinite;
 }
+#topbar .status .divider { color: var(--border-strong); }
 @keyframes pulse { 50% { opacity: .4; } }
 
 /* ---------- layout ---------- */
@@ -86,14 +98,21 @@ html, body {
   background: var(--accent); color: #fff;
 }
 #sidebar nav a .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; opacity: .85; }
-#sidebar footer {
-  padding: 10px 14px; border-top: 1px solid var(--border);
-  font-size: 11.5px; color: var(--muted);
+/* ---------- sidebar status card ---------- */
+#sidebar .sidebar-status { margin-top: auto; padding: 10px 12px; }
+#sidebar .status-card {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
 }
-#sidebar footer .badge {
-  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
-  background: var(--success); color: #064e3b; font-size: 11px; font-weight: 700;
+#sidebar .status-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(34, 197, 94, .18); color: var(--success);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex: 0 0 auto;
 }
+#sidebar .status-text { font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+#sidebar .status-text strong { color: var(--text); font-size: 12.5px; }
 #main { flex: 1; margin-left: var(--sidebar); display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
 #content { padding: 22px 26px 40px; max-width: 1180px; width: 100%; margin: 0 auto; }
 
@@ -181,6 +200,17 @@ button { cursor: pointer; }
 .btn.tiny { padding: 5px 10px; font-size: 12px; }
 .provider-card .error { margin-top: 0; }
 .provider-card .error .btn-row { gap: 8px; }
+
+/* ---------- about view ---------- */
+.about-panel { display: flex; flex-direction: column; gap: 0; }
+.about-row {
+  display: flex; gap: 12px; padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.about-row:last-child { border-bottom: none; }
+.about-label { flex: 0 0 140px; color: var(--muted); font-weight: 600; }
+.about-db { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
 
 /* ---------- settings view ---------- */
 .warning {
