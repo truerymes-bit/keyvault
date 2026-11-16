@@ -59,6 +59,17 @@ func (h *BackupHandler) Backup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record the backup time in settings so /api/info reports it.
+	ts := time.Now().UTC().Format(time.RFC3339)
+	if _, err := h.DB.Exec(
+		"INSERT INTO settings (key, value) VALUES ('last_backup', ?) "+
+			"ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		ts,
+	); err != nil {
+		writeErr(w, http.StatusInternalServerError, "record last_backup: "+err.Error())
+		return
+	}
+
 	fn := "keyvault-backup-" + time.Now().UTC().Format("20060102-150405") + ".kbk"
 	writeDownload(w, fn, enc)
 }
