@@ -935,13 +935,13 @@ function openImportModal() {
       <div class="wizard-panel hidden" data-step="2">
         <div class="wizard-scroll">
           <div id="import-attention" class="attention-banner hidden"></div>
-          <div id="import-new-providers" class="hidden"></div>
           <div class="table-wrap">
             <table id="import-table">
               <thead><tr><th>Email</th><th>Provider</th><th>API Key</th><th>Status</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
+          <div id="import-status" class="small" style="margin-top:6px;"></div>
           <div class="hide-keys-toggle" style="margin: 8px 0; font-size: 13px; color: var(--muted);">
             <input id="import-keys-hide" type="checkbox">
             <span>Hide keys</span>
@@ -977,7 +977,7 @@ function openImportModal() {
   const custom = $('#import-custom');
   const tbody = $('#import-table tbody');
   const unmatchedEl = $('#import-unmatched');
-  const newProvEl = $('#import-new-providers');
+  const statusEl = $('#import-status');
   const dupSummary = $('#import-dup-summary');
   const step3Summary = $('#import-step3-summary');
   const attentionEl = $('#import-attention');
@@ -989,6 +989,7 @@ function openImportModal() {
   let lastData = null;
   let lastRows = [];
   let providerNames = [];
+  let lastNewProviders = [];
 
   const masked = (k) => (k || '').replace(/\S/g, '•');
 
@@ -1002,13 +1003,22 @@ function openImportModal() {
 
   // Provider dropdown for one row: every existing provider plus
   // "New provider...". A provider the file named that is not in the list is
-  // added as the selected option so the value is never lost.
+  // added as the selected option so the value is never lost. When the
+  // provider is a detected new provider with a "Did you mean" suggestion, a
+  // small line under the select offers the one-click correction.
   const providerSelectHTML = (r) => {
     const known = r.provider && providerNames.includes(r.provider);
     const names = r.provider && !known ? [r.provider, ...providerNames] : providerNames;
     const opts = names.map((n) => `<option value="${escapeHtml(n)}"${n === r.provider ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
     const placeholder = r.provider ? '' : '<option value="" selected>Select provider…</option>';
-    return `<select class="provider-select" data-index="${r.index}">${placeholder}${opts}<option value="__new__">New provider...</option></select>`;
+    let suggestHTML = '';
+    if (r.provider) {
+      const np = lastNewProviders.find((p) => p.name.toLowerCase() === r.provider.toLowerCase());
+      if (np && np.suggestion) {
+        suggestHTML = `<div class="cell-suggest">Did you mean ${escapeHtml(np.suggestion)}? <button class="btn tiny" data-accept-sug="${escapeHtml(np.name)}">Use ${escapeHtml(np.suggestion)}</button></div>`;
+      }
+    }
+    return `<select class="provider-select" data-index="${r.index}">${placeholder}${opts}<option value="__new__">New provider...</option></select>${suggestHTML}`;
   };
 
   const showNewProviderInput = (sel) => {
@@ -1087,6 +1097,12 @@ function openImportModal() {
         scheduleValidate();
       });
     });
+    tbody.querySelectorAll('[data-accept-sug]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const np = lastNewProviders.find((p) => p.name === b.dataset.acceptSug);
+        if (np) acceptSuggestion(np);
+      });
+    });
 
     // Review-step attention banner and the Import button counts. Duplicates
     // are skipped by default, so they are neither imported nor blocked.
@@ -1160,9 +1176,9 @@ function openImportModal() {
         // The server persisted all edits and reindexed the rows; stale
         // client-side edits would misapply against the new indices.
         cellInputs.clear();
+        lastNewProviders = data.new_providers || [];
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
-        renderNewProviders(data.new_providers);
       })
       .catch((err) => toast(err.message, 'error'));
   };
@@ -1189,9 +1205,9 @@ function openImportModal() {
       .then((data) => {
         session = data.session_id;
         cellInputs.clear();
+        lastNewProviders = data.new_providers || [];
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
-        renderNewProviders(data.new_providers);
       })
       .catch((err) => toast(err.message, 'error'));
   };
@@ -1245,56 +1261,27 @@ function openImportModal() {
     // Rename every record grouped under the misspelled heading to the
     // suggested known provider, then re-validate so the server session and
     // the review table agree. The correction is never silent: it only happens
-    // when the user clicks the suggestion.
-    const edits = [];
-    tbody.querySelectorAll('tr.import-row').forEach((tr) => {
-      const cell = tr.querySelector('.provider-select');
-      if (cell && cell.value === np.name) {
-        edits.push({ index: Number(tr.dataset.index), provider: np.suggestion });
-      }
-    });
-    if (!edits.length) { toast('No rows to rename', 'error'); return; }
+    // when the user clicks the suggestion. Rows are matched from the last
+    // server response (lastRows), not the DOM, so the rename cannot miss a
+    // row the user has since edited.
+    const edits = lastRows
+      .filter((r) => r.provider && r.provider.toLowerCase() === np.name.toLowerCase())
+      .map((r) => ({ index: r.index, provider: np.suggestion }));
+    if (!edits.length) { setStatus('No rows to rename'); return; }
     api('/api/import/validate', { method: 'POST', json: { session_id: session, records: edits } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
         session = data.session_id;
+        lastNewProviders = data.new_providers || [];
         // The rename is already persisted server-side; do not put stale
         // indices back into cellInputs — the server may have reindexed rows.
         cellInputs.clear();
         renderRows(data.rows);
-        renderNewProviders(data.new_providers);
-        toast(`Renamed ${edits.length} record${edits.length !== 1 ? 's' : ''} to ${np.suggestion}.`, 'success');
+        setStatus(`Renamed ${edits.length} record${edits.length !== 1 ? 's' : ''} to ${np.suggestion}.`);
       })
-      .catch((err) => toast(err.message, 'error'));
+      .catch((err) => setStatus(err.message));
   };
 
-  const renderNewProviders = (nps) => {
-    // The box is hidden only here, when validate returns no new providers.
-    if (!nps || !nps.length) {
-      newProvEl.classList.add('hidden');
-      return;
-    }
-    newProvEl.classList.remove('hidden');
-    const items = nps.map((np) => {
-      const recs = np.records && np.records.length ? `<span class="small"> (${np.records.length} records)</span>` : '';
-      let suggest = '';
-      if (np.suggestion) {
-        // escapeHtml covers every interpolated value, including the
-        // data-* attribute values, so the heading text cannot break out.
-        suggest = `<div class="suggest" data-suggest="${escapeHtml(np.name)}"><button class="btn tiny" data-accept="${escapeHtml(np.name)}">Did you mean ${escapeHtml(np.suggestion)}?</button></div>`;
-      }
-      return `<li><strong>${escapeHtml(np.name)}</strong>${recs}${suggest}</li>`;
-    }).join('');
-    newProvEl.innerHTML = `
-      <div class="field">
-        <span class="small">New provider detected — its records will be imported under this name:</span>
-        <ul class="new-providers">${items}</ul>
-      </div>
-    `;
-    newProvEl.querySelectorAll('[data-accept]').forEach((btn) => {
-      const np = nps.find((n) => n.name === btn.dataset.accept);
-      if (np) btn.addEventListener('click', () => acceptSuggestion(np));
-    });
-  };
+  const setStatus = (msg) => { statusEl.textContent = msg || ''; };
 
   $('#import-next-1').addEventListener('click', () => {
     const text = textarea.value.trim();
@@ -1305,9 +1292,9 @@ function openImportModal() {
       .then((data) => {
         session = data.session_id;
         lastData = data;
+        lastNewProviders = data.new_providers || [];
         renderRows(data.rows);
         renderUnmatched(data.unmatched);
-        renderNewProviders(data.new_providers);
         showStep2();
       })
       .catch((err) => toast(err.message, 'error'));

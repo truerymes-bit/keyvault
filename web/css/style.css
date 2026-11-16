@@ -411,3 +411,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   background: rgba(239, 68, 68, .12); color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, .35);
 }
+
+/* inline "Did you mean X?" line under a row's provider select */
+#import-table .cell-suggest {
+  margin-top: 4px; font-size: 12px; color: var(--muted);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+#import-table .cell-suggest .btn.tiny { padding: 2px 8px; font-size: 12px; }
