@@ -418,3 +418,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
 #import-table .cell-suggest .btn.tiny { padding: 2px 8px; font-size: 12px; }
+
+/* unrecognized-lines list: its own scrollable grid so many lines never push
+   the rest of the modal out of view */
+.unmatched-scroll {
+  max-height: 220px; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px; padding: 2px;
+}
+.unmatched-card {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px;
+}
+.unmatched-card .field { margin-bottom: 8px; gap: 6px; }
+.unmatched-card .btn-row { margin-top: 6px; }

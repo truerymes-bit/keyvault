@@ -1220,33 +1220,33 @@ function openImportModal() {
     head.className = 'field';
     head.innerHTML = '<span class="small">Unrecognized lines — plain text, not keys. Remove them or use them as a record.</span>';
     unmatchedEl.appendChild(head);
-    const table = document.createElement('table');
-    const tbodyEl = document.createElement('tbody');
+    // Grid container: max-height 220px with its own vertical scroll, so a
+    // file with many unrecognized lines never pushes the rest of the modal
+    // out of view.
+    const container = document.createElement('div');
+    container.className = 'unmatched-scroll';
     for (const u of lines) {
-      const tr = document.createElement('tr');
-      tr.className = 'unmatched-row';
+      const card = document.createElement('div');
+      card.className = 'unmatched-card';
       const pre = prefillFromLine(u.text);
-      tr.innerHTML = `
-        <td colspan="5">
-          <div class="unmatched-line">${escapeHtml(u.text)} <span class="small">— ${escapeHtml(u.reason)}</span></div>
-          <div class="field" style="margin-top:6px;">
-            <input class="inline-editing" id="unmatch-email-${u.line}" placeholder="email" value="${escapeHtml(pre.email)}">
-            <input class="inline-editing cell" data-field="key" id="unmatch-key-${u.line}" placeholder="API key" style="width:220px;" value="${escapeHtml(pre.key)}">
-            <input class="inline-editing" id="unmatch-provider-${u.line}" placeholder="provider" style="width:180px;" value="${escapeHtml(u.provider || '')}">
-          </div>
-          <div class="btn-row" style="margin-top:6px;">
-            <button class="btn tiny" data-act="use" data-line="${u.line}">Use as record</button>
-            <button class="btn tiny danger" data-act="remove" data-line="${u.line}">✕</button>
-          </div>
-        </td>`;
-      tbodyEl.appendChild(tr);
+      card.innerHTML = `
+        <div class="unmatched-line">${escapeHtml(u.text)} <span class="small">— ${escapeHtml(u.reason)}</span></div>
+        <div class="field" style="margin-top:6px;">
+          <input class="inline-editing" id="unmatch-email-${u.line}" placeholder="email" value="${escapeHtml(pre.email)}">
+          <input class="inline-editing cell" data-field="key" id="unmatch-key-${u.line}" placeholder="API key" value="${escapeHtml(pre.key)}">
+          <input class="inline-editing" id="unmatch-provider-${u.line}" placeholder="provider" value="${escapeHtml(u.provider || '')}">
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn tiny" data-act="use" data-line="${u.line}">Use as record</button>
+          <button class="btn tiny danger" data-act="remove" data-line="${u.line}">✕</button>
+        </div>`;
+      container.appendChild(card);
     }
-    table.appendChild(tbodyEl);
-    unmatchedEl.appendChild(table);
-    tbodyEl.querySelectorAll('[data-act="remove"]').forEach((b) => {
+    unmatchedEl.appendChild(container);
+    container.querySelectorAll('[data-act="remove"]').forEach((b) => {
       b.addEventListener('click', () => unmatchedEdit({ line: Number(b.dataset.line), remove: true }));
     });
-    tbodyEl.querySelectorAll('[data-act="use"]').forEach((b) => {
+    container.querySelectorAll('[data-act="use"]').forEach((b) => {
       b.addEventListener('click', () => {
         const line = Number(b.dataset.line);
         const email = (document.getElementById(`unmatch-email-${line}`) || {}).value || '';
