@@ -150,7 +150,7 @@ Fixed in order. Each commit separately, only when node --check web/js/app.js, go
 
 Source of truth: docs/ui.md (the picture is docs/mockup.png). Replaces R3 and the Dashboard. The import wizard (R4, R5) is unchanged except that it opens from the Keys page. Same rules as the R tasks: set [?] and log the browser steps, and only the user ticks [x].
 
-- [ ] **U1 Backend info.** GET /api/info returns db_file (name), db_size_bytes, last_backup (RFC 3339 or null), version, encryption ("AES-256-GCM"). Record last_backup in settings when POST /api/backup succeeds. Go tests.
+- [x] **U1 Backend info.** GET /api/info returns db_file (name), db_size_bytes, last_backup (RFC 3339 or null), version, encryption ("AES-256-GCM"). Record last_backup in settings when POST /api/backup succeeds. Go tests.
 - [ ] **U2 Shell and routing.** Sidebar Keys, Providers, Settings, About, plus the status card and top bar. Landing page is #/keys. Remove the Dashboard page, route, and code. Remove any Add key or Import sidebar items.
 - [ ] **U3 Key list.** Search with clear X, sort control, email groups with chevron and counts, repeatable expand and collapse, kebab menu, empty states.
 - [ ] **U4 Row actions.** Inline reveal toggle with 30 second auto-mask, copy of the real key, edit (loads the right panel), inline delete confirm. Real keys come only from the reveal endpoint. Add a Go test that delete removes the row from the database.
