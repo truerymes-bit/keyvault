@@ -142,9 +142,9 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 
 Fixed in order. Each commit separately, only when node --check web/js/app.js, gofmt -l ., go vet ./..., and go test -count=1 ./... are clean. Set [?]; the user ticks [x] after testing.
 
-- [?] **W1 cellInputs payload.** `cellInputs` is a Map, but `scheduleValidate` built its payload with `Object.keys(cellInputs)`, which is always empty. No email, provider, or key edit reached the server, so every provider pick reverted to "Select provider…". Payload now built from `cellInputs.entries()`. Verified every other access uses Map methods.
-- [?] **W2 Inline "Did you mean X?" suggestion.** Show the suggestion inline in the provider cell of every row whose provider is a detected new provider with a suggestion, as a small line under the select with a "Use X" button. Remove the box above the table. The attention banner stays above the table.
-- [?] **W3 Unrecognized-lines grid.** The unrecognized-lines list gets its own container with max-height 220px and vertical scroll, laid out as a grid with `repeat(auto-fill, minmax(320px, 1fr))`, so many lines never push content out of the modal.
+- [x] **W1 cellInputs payload.** `cellInputs` is a Map, but `scheduleValidate` built its payload with `Object.keys(cellInputs)`, which is always empty. No email, provider, or key edit reached the server, so every provider pick reverted to "Select provider…". Payload now built from `cellInputs.entries()`. Verified every other access uses Map methods.
+- [x] **W2 Inline "Did you mean X?" suggestion.** Show the suggestion inline in the provider cell of every row whose provider is a detected new provider with a suggestion, as a small line under the select with a "Use X" button. Remove the box above the table. The attention banner stays above the table.
+- [x] **W3 Unrecognized-lines grid.** The unrecognized-lines list gets its own container with max-height 220px and vertical scroll, laid out as a grid with `repeat(auto-fill, minmax(320px, 1fr))`, so many lines never push content out of the modal.
 
 ## Phase U: Rebuild the Keys page to match docs/ui.md
 
