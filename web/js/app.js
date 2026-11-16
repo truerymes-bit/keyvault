@@ -1146,9 +1146,11 @@ function openImportModal() {
   };
 
   const scheduleValidate = () => {
-    const records = Object.keys(cellInputs).map((k) => {
+    // cellInputs is a Map; Object.keys() on a Map is always empty, so the
+    // payload must be built from entries().
+    const records = Array.from(cellInputs.entries()).map(([k, val]) => {
       const [idx, field] = k.split('_');
-      return { index: Number(idx), [field]: cellInputs.get(k) };
+      return { index: Number(idx), [field]: val };
     }).filter((e) => Object.values(e).some((v) => v !== ''));
     removedIndices.forEach((i) => records.push({ index: i, remove: true }));
     if (!session) return;
@@ -1255,7 +1257,9 @@ function openImportModal() {
     api('/api/import/validate', { method: 'POST', json: { session_id: session, records: edits } }, { 'X-CSRF-Token': state.csrf })
       .then((data) => {
         session = data.session_id;
-        edits.forEach((e) => cellInputs.set(e.index + '_provider', e.provider));
+        // The rename is already persisted server-side; do not put stale
+        // indices back into cellInputs — the server may have reindexed rows.
+        cellInputs.clear();
         renderRows(data.rows);
         renderNewProviders(data.new_providers);
         toast(`Renamed ${edits.length} record${edits.length !== 1 ? 's' : ''} to ${np.suggestion}.`, 'success');

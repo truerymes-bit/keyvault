@@ -536,13 +536,13 @@ func TestKeyOnlyTokenRule(t *testing.T) {
 		want bool
 	}{
 		{"jina_FAKE00000000001", true}, // 21 chars, underscore + digits
-		{"hf_FAKE00000000001", true},     // 17 chars
-		{"1234567890123456", true},      // exactly 16 digits
-		{"AIzaFAKE0001abcdefg", true},   // 19 chars, digits required
-		{"abcdefghijklmnop", false},     // exactly 16 letters, no digit
-		{"shortkey1234567", false},      // 15 chars
-		{"has/slash123456789", false},   // slash
-		{"two words 123456789", false},  // spaces
+		{"hf_FAKE00000000001", true},   // 17 chars
+		{"1234567890123456", true},     // exactly 16 digits
+		{"AIzaFAKE0001abcdefg", true},  // 19 chars, digits required
+		{"abcdefghijklmnop", false},    // exactly 16 letters, no digit
+		{"shortkey1234567", false},     // 15 chars
+		{"has/slash123456789", false},  // slash
+		{"two words 123456789", false}, // spaces
 	}
 	for _, c := range cases {
 		if got := isKeyOnly(c.line); got != c.want {
