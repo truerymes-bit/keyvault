@@ -138,6 +138,14 @@ Replaces T5.1 to T5.8. Agents cannot click through a browser, so they mark a fin
 14. Commit saves only rows that have a provider, an email, and a key. Unmatched lines and detected non-provider lines are never written to the database. Rows needing attention are listed in step 2 so the user can fix or remove them before import. Add a Go test: a file containing Content-Type, application/json, and HTTP-Referer lines commits zero junk records and zero junk providers.
 15. Add a Delete button with a confirm step on every key row and in the edit modal. The list refreshes after delete. Add a Go test that delete removes the row from the database. The Add key button on the API Keys page must open its modal.
 
+## Import wizard defects (second round)
+
+Fixed in order. Each commit separately, only when node --check web/js/app.js, gofmt -l ., go vet ./..., and go test -count=1 ./... are clean. Set [?]; the user ticks [x] after testing.
+
+- [?] **W1 cellInputs payload.** `cellInputs` is a Map, but `scheduleValidate` built its payload with `Object.keys(cellInputs)`, which is always empty. No email, provider, or key edit reached the server, so every provider pick reverted to "Select provider…". Payload now built from `cellInputs.entries()`. Verified every other access uses Map methods.
+- [?] **W2 Inline "Did you mean X?" suggestion.** Show the suggestion inline in the provider cell of every row whose provider is a detected new provider with a suggestion, as a small line under the select with a "Use X" button. Remove the box above the table. The attention banner stays above the table.
+- [?] **W3 Unrecognized-lines grid.** The unrecognized-lines list gets its own container with max-height 220px and vertical scroll, laid out as a grid with `repeat(auto-fill, minmax(320px, 1fr))`, so many lines never push content out of the modal.
+
 ## Phase U: Rebuild the Keys page to match docs/ui.md
 
 Source of truth: docs/ui.md (the picture is docs/mockup.png). Replaces R3 and the Dashboard. The import wizard (R4, R5) is unchanged except that it opens from the Keys page. Same rules as the R tasks: set [?] and log the browser steps, and only the user ticks [x].
@@ -246,3 +254,18 @@ Newest entries at the bottom. Format: `YYYY-MM-DD | Task | what changed | test r
 - 2026-11-15 | R6 (Providers, Dashboard, Settings) + R7 (Layout) | Styled Providers as a responsive grid with inline Rename and merge offer on duplicate name collision (POST /api/providers/{id}/merge reassigns keys and deletes source); Dashboard "Recently modified" table removed; Settings trimmed to Session (timeout display + Lock now button) and Local backup/restore (encrypted .kbk download and restore upload); backup/restore 401 handling triggers lockVault(); added #content wrapper with max-width 1180px and centered layout. | node --check web/js/app.js pass, gofmt -l . clean, go vet ./... pass, go test -count=1 ./... pass | next: commit R6/R7.
 
 - 2026-11-15 | U1 | internal/handlers/info.go: InfoHandler and Info method for GET /api/info returning db_file (filepath.Base of DBPath), db_size_bytes (os.Stat), last_backup (*string, RFC3339 or null from settings "last_backup"), version "1.0.0", encryption "AES-256-GCM". internal/handlers/backup.go: Backup handler now upserts settings "last_backup" = time.Now().UTC().Format(time.RFC3339) after backup.Encode succeeds and before writeDownload. cmd/keyvault/main.go: registered GET /api/info through protected(). internal/handlers/info_test.go: TestInfoHandler (fields correct, last_backup null then set) and TestInfoHandlerLocked (401 when locked). | gofmt -l clean, go vet ./... pass, go test -count=1 ./... pass; E2E verified on 127.0.0.1:18097 with fresh DB: before backup last_backup=null, after POST /api/backup last_backup="2026-11-16T00:18:04Z" and backup file 28741 bytes | next: U2 (shell and routing: remove Dashboard, sidebar Keys/Providers/Settings/About, landing #/keys).
+
+- 2026-11-15 | Import wizard defects W1-W3 | Three import-wizard defects fixed, each in its own commit, each only when node --check web/js/app.js, gofmt -l ., go vet ./..., go test -count=1 ./... were clean.
+  - W1 (3b169c2): scheduleValidate builds the validate payload from `Array.from(cellInputs.entries())` instead of `Object.keys(cellInputs)`; also clears `cellInputs` on suggestion accept so stale indices never misapply after server reindexing. Every other access already used Map methods (`set`/`delete`/`clear`).
+  - W2 (b71a16c): removed `#import-new-providers` markup and `renderNewProviders`; suggestions now render inline under each row's provider select via `providerSelectHTML` using `lastNewProviders` (updated on parse, validate, and suggestion accept). Attention banner remains above the table.
+  - W3 (7ae862c): unrecognized lines render into `.unmatched-scroll` (max-height 220px, overflow-y auto, `grid-template-columns: repeat(auto-fill, minmax(320px, 1fr))`) with `.unmatched-card` children, so many lines never push the rest of the modal out of view.
+  Browser steps (fresh isolated server + fresh DB):
+  1. Setup/unlock. Open API Keys -> Import -> paste a file with a known heading and at least one row with no provider.
+  2. Next -> review step. On a row with no provider, pick an existing provider from the dropdown. Wait for the table redraw. The provider must stay selected (no revert to "Select provider…").
+  3. On another row, choose "New provider...", type a new name, press Enter or blur. After redraw the new name must appear selected and be created once at import.
+  4. Edit an email cell: click it, change the text, blur/Enter. After redraw the new email must show.
+  5. Edit a key cell: click it, change the key, blur/Enter. After redraw the new key must show.
+  6. Click Import. Verify all edited rows import with the values just shown.
+  7. Re-run with a typo heading ("Gemmini API Keys:") that maps to a detected new provider with a suggestion. The row's provider cell shows "Did you mean Gemini?" as a small line under the select with a "Use Gemini" button. No separate box appears above the table.
+  8. Click "Use Gemini". The suggestion line disappears and the row's provider becomes Gemini after the redraw.
+  9. Re-run with a file containing many unrecognized lines (e.g., 20+ lines like Content-Type/application/json). The unrecognized-lines area shows its own vertical scrollbar capped at 220px height; the modal does not grow past its maximum; cards flow in columns of at least 320px.
